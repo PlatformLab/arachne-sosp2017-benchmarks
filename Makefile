@@ -9,4 +9,4 @@ $(ARBITER_BENCHMARK_BINS) : % : %.cc CoreArbiter/libCoreArbiter.a
 	g++  $(DEBUG) $(CXXFLAGS)  $< $(LIBS) -o $@
 
 clean:
-	rm -f $(BINS) *.log
+	rm -f $(ARBITER_BENCHMARK_BINS) *.log

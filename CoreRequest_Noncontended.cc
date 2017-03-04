@@ -10,7 +10,7 @@
 using PerfUtils::TimeTrace;
 using CoreArbiter::CoreArbiterClient;
 
-#define NUM_TRIALS 1
+#define NUM_TRIALS 10
 
 std::atomic<bool> aboutToBlock(true);
 /**
