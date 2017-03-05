@@ -10,7 +10,7 @@
 using PerfUtils::TimeTrace;
 using CoreArbiter::CoreArbiterClient;
 
-#define NUM_TRIALS 10
+#define NUM_TRIALS 100000
 
 std::atomic<bool> aboutToBlock(true);
 /**
@@ -20,9 +20,12 @@ std::atomic<bool> aboutToBlock(true);
 void coreExec(CoreArbiterClient& client) {
     for (int i = 0; i < NUM_TRIALS; i++) {
         aboutToBlock = true;
+        TimeTrace::record("Core thread about to block");
         client.blockUntilCoreAvailable();
+        TimeTrace::record("Core thread returned from block");
         aboutToBlock = false;
         while (!client.shouldReleaseCore());
+        TimeTrace::record("Core informed that it should block");
     }
 }
 
@@ -36,9 +39,13 @@ int main(){
     for (int i = 0; i < NUM_TRIALS; i++) {
         // Release a core and wait for release
         while (!aboutToBlock);
+        TimeTrace::record("Requesting a core");
         client.setNumCores(oneCoreRequest);
         while (aboutToBlock);
+        TimeTrace::record("Releasing a core");
         client.setNumCores(zeroCoreRequest);
     }
     coreThread.join();
+    TimeTrace::setOutputFileName("CoreRequest_Noncontended.log");
+    TimeTrace::print();
 }
