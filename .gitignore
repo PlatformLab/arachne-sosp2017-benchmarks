@@ -1,2 +1,6 @@
 # Executables
 CoreRequest_Noncontended
+
+# Log files and text files
+*.txt
+*.log
