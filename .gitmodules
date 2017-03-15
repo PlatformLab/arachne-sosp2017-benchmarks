@@ -4,3 +4,9 @@
 [submodule "PerfUtils"]
 	path = PerfUtils
 	url = https://github.com/PlatformLab/PerfUtils.git
+[submodule "Arachne"]
+	path = Arachne
+	url = https://github.com/PlatformLab/Arachne
+[submodule "arachne-latency-microbenchmarks"]
+	path = arachne-latency-microbenchmarks
+	url = https://github.com/PlatformLab/ArachnePerfTests
