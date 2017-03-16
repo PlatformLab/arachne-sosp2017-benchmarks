@@ -12,7 +12,7 @@ using PerfUtils::TimeTrace;
 using CoreArbiter::CoreArbiterClient;
 using namespace CoreArbiter;
 
-#define NUM_TRIALS 100000
+#define NUM_TRIALS 1000
 
 /**
   * This thread will get unblocked when a core is allocated, and will block
@@ -38,26 +38,29 @@ void coreRequest(CoreArbiterClient& client) {
     for (int i = 0; i < NUM_TRIALS; i++) {
         // When the number of blocked threads becomes nonzero, we request a core.
         while (client.getNumBlockedThreads() == 0);
-        TimeTrace::record("Requesting a core");
+        TimeTrace::record("Detected thread block");
         client.setNumCores(twoCoresRequest);
+        TimeTrace::record("Requested a core");
         // When the number of blocked threads becomes zero, we release a core.
         while (client.getNumBlockedThreads() == 1);
-        TimeTrace::record("Releasing a core");
+        TimeTrace::record("Detected thread wakeup");
         client.setNumCores(oneCoreRequest);
+        TimeTrace::record("Released a core");
     }
 }
 
 int main(){
-    Logger::setLogLevel(WARNING);
+    Logger::setLogLevel(ERROR);
     CoreArbiterClient& client =
         CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
     std::thread requestThread(coreRequest, std::ref(client));
-    while (client.getOwnedCoreCount() == 0);
+    while (client.getNumOwnedCores() == 0);
 
     std::thread coreThread(coreExec, std::ref(client));
 
     coreThread.join();
     requestThread.join();
+
     TimeTrace::setOutputFileName("CoreRequest_Noncontended.log");
     TimeTrace::print();
 }
