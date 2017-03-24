@@ -1,5 +1,6 @@
 # Executables
 CoreRequest_Noncontended
+SyntheticWorkload
 
 # Log files and text files
 *.txt
