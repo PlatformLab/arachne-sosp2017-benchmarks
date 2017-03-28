@@ -74,7 +74,7 @@ void dispatch() {
  */
 
 int main() {
-	Arachne::numCores = 4;
+	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 4;
     Arachne::init();
     Arachne::createThread(dispatch);

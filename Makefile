@@ -1,5 +1,5 @@
 LIBS=-ICoreArbiter -IArachne -IPerfUtils PerfUtils/libPerfUtils.a -pthread
-CXXFLAGS=-std=c++11 -O3 -Wall -Werror -Wformat=2 -Wextra -Wwrite-strings -Wno-unused-parameter -Wmissing-format-attribute -Wno-non-template-friend -Woverloaded-virtual -Wcast-qual -Wcast-align -Wconversion -fomit-frame-pointer
+CXXFLAGS=-g -std=c++11 -O3 -Wall -Werror -Wformat=2 -Wextra -Wwrite-strings -Wno-unused-parameter -Wmissing-format-attribute -Wno-non-template-friend -Woverloaded-virtual -Wcast-qual -Wcast-align -Wconversion -fomit-frame-pointer
 
 ARBITER_BENCHMARK_BINS = CoreRequest_Noncontended
 UNIFIED_BENCHMARK_BINS = SyntheticWorkload
