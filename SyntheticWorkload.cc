@@ -1,5 +1,8 @@
 #include <random>
 #include <thread>
+#include <signal.h>
+#include <string.h>
+#include <unistd.h>
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
 
@@ -59,6 +62,43 @@ void dispatch() {
 }
 
 /**
+  * This method attempts to attach gdb to the currently running process.
+  */
+void invokeGDB(int signum) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "/usr/bin/gdb -p %d",  getpid());
+    int ret = system(buf);
+
+    if (ret == -1) {
+        fprintf(stderr, "Failed to attach gdb upon receiving the signal %s\n",
+                strsignal(signum));
+    }
+}
+
+void
+signalHandler(int signum) {
+    // Prevent repeated invocations
+    struct sigaction signalAction;
+    signalAction.sa_handler = SIG_DFL;
+    signalAction.sa_flags = SA_RESTART;
+    sigaction(signum, &signalAction, NULL);
+
+    // Process the signal
+    invokeGDB(signum);
+}
+
+void
+installSignalHandler() {
+    struct sigaction signalAction;
+    signalAction.sa_handler = signalHandler;
+    signalAction.sa_flags = SA_RESTART;
+    if (sigaction(SIGSEGV, &signalAction, NULL) != 0)
+        fprintf(stderr, "Couldn't set signal handler for SIGSEGV");
+    if (sigaction(SIGABRT, &signalAction, NULL) != 0)
+        fprintf(stderr, "Couldn't set signal handler for SIGABRT");
+}
+
+/**
  * This synthetic benchmarking tool allows us to create threads at a Poisson
  * arrival rate with a configurable mean. These threads run for a configurable
  * amount of time. We record the times that configuration changes go into
@@ -74,6 +114,8 @@ void dispatch() {
  */
 
 int main() {
+    // Catch intermittent errors
+    installSignalHandler();
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 4;
     Arachne::init();
