@@ -67,12 +67,12 @@ void lowPriorityExec(CoreArbiterClient& client) {
 
 int main(){
     Logger::setLogLevel(ERROR);
-    
+
     pid_t pid = fork();
     if (pid == 0) {
         CoreArbiterClient& client =
             CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
-        
+
         // Wait for the low priority thread to be put on a core
         while (client.getNumUnoccupiedCores() == 2);
         client.setNumCores({2,0,0,0,0,0,0,0});
