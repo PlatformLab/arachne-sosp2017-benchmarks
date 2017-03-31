@@ -1,5 +1,7 @@
 # Executables
 CoreRequest_Noncontended
+CoreRequest_Contended
+CoreRequest_Contended_Timeout
 SyntheticWorkload
 
 # Log files and text files
