@@ -10,7 +10,8 @@ using PerfUtils::Cycles;
 
 std::atomic<uint64_t> completions;
 void fixedWork(uint64_t duration) {
-	Cycles::sleep(duration);
+    uint64_t stop = Cycles::rdtsc() + Cycles::fromNanoseconds(duration);
+    while (Cycles::rdtsc() < stop);
     completions++;
 }
 
@@ -32,7 +33,13 @@ void dispatch() {
     // Generate time in ns because that's more intuitive for users and 
 	// Must be floating point type...
 	double creationsPerSecond = 1000000U;
-	uint64_t durationPerThread = 0;
+    // when this number is non-zero, why are we not ramping up?
+    // This number is in nanoseconds, but the granularity of our cycle
+    // measruements are in the 10's of ns, so differences of less than 10 ns
+    // are not meaningful.
+	uint64_t durationPerThread = 2000;
+
+    double experimentDurationInSeconds = 2;
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -43,7 +50,7 @@ void dispatch() {
 		Cycles::fromSeconds(intervalGenerator(gen));
 
     uint64_t currentTime = Cycles::rdtsc();
-    uint64_t finalTime = currentTime + Cycles::fromSeconds(1);
+    uint64_t finalTime = currentTime + Cycles::fromSeconds(experimentDurationInSeconds);
     // DCFT loop
     uint64_t failureRate = 0;
     for (; currentTime < finalTime ; currentTime = Cycles::rdtsc()) {
