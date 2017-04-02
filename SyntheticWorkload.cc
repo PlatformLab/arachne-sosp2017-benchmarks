@@ -64,6 +64,13 @@ void dispatch() {
     printf("Completions %lu\n"
            "Failed Creations %lu\n", completions.load(), failureRate);
     fflush(stdout);
+    printf("%lu\n",Cycles::rdtsc());
+    fflush(stdout);
+
+    // Check for ramp-down
+    usleep(1000000);
+    printf("%lu\n",Cycles::rdtsc());
+    fflush(stdout);
     Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
