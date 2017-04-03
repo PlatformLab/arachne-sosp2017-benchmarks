@@ -5,18 +5,51 @@
 #include <unistd.h>
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
+#include "CoreArbiter/Logger.h"
+#include "Stats.h"
 
 using PerfUtils::Cycles;
+namespace Arachne{
+extern bool disableLoadEstimation;
+}
+
+// Support a maximum of 100 million entries.
+#define MAX_ENTRIES 1 << 27
+
+uint64_t latencies[MAX_ENTRIES];
+
+// TODO: Use shared memory to expose these controls.
+double experimentDurationInSeconds = 5;
+
+// Number of creations per second
+double creationsPerSecond = 1000000U;
+
+// NB: This number is in nanoseconds, but the granularity of our cycle
+// measruements are in the 10's of ns, so differences of less than 10 ns
+// are not meaningful.
+uint64_t durationPerThread = 2000;
 
 std::atomic<uint64_t> completions;
-void fixedWork(uint64_t duration) {
-    uint64_t stop = Cycles::rdtsc() + Cycles::fromNanoseconds(duration);
+std::atomic<uint64_t> failureRate;
+
+/**
+  * Spin for duration cycles, and then compute latency from creation time.
+  */
+void fixedWork(uint64_t duration, uint64_t creationTime) {
+    uint64_t stop = Cycles::rdtsc() + duration;
     while (Cycles::rdtsc() < stop);
-    completions++;
+    uint64_t latency = Cycles::rdtsc() - creationTime;
+    latencies[completions++] = latency;
 }
 
 void dispatch() {
+    // Page in our data store
+    memset(latencies, 0, MAX_ENTRIES);
+
+    // Prevent schedulign onto this core, since threads scheduled to this core
+    // will never get a chance to run.
 	Arachne::makeExclusiveOnCore();
+
     // Start with a DCFT-style implementation based on shared-memory for communication
     // If that becomes too expensive, then switch to a separate thread for commands.
 
@@ -24,22 +57,8 @@ void dispatch() {
     // it has to poll to see whether it should issue more requests as well as
     // polling on shared memory for commands.
 
-    // TODO: Use shared memory to expose these controls.
+    uint64_t cyclesPerThread = Cycles::fromNanoseconds(durationPerThread);
 
-    // Could it be that the right way to do this is to simply provide Arachne
-    // with the equivalent of Go's LockOSThread? To get an exclusive core for
-    // this function alone? That way, Arachne can work with such threads and
-    // schedule other threads as needed.
-    // Generate time in ns because that's more intuitive for users and 
-	// Must be floating point type...
-	double creationsPerSecond = 1000000U;
-    // when this number is non-zero, why are we not ramping up?
-    // This number is in nanoseconds, but the granularity of our cycle
-    // measruements are in the 10's of ns, so differences of less than 10 ns
-    // are not meaningful.
-	uint64_t durationPerThread = 2000;
-
-    double experimentDurationInSeconds = 2;
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -52,25 +71,15 @@ void dispatch() {
     uint64_t currentTime = Cycles::rdtsc();
     uint64_t finalTime = currentTime + Cycles::fromSeconds(experimentDurationInSeconds);
     // DCFT loop
-    uint64_t failureRate = 0;
     for (; currentTime < finalTime ; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             nextCycleTime = currentTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
-            if (Arachne::createThread(fixedWork, durationPerThread) == Arachne::NullThread)
+            if (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread)
                 failureRate++;
         }
     }
-    printf("Completions %lu\n"
-           "Failed Creations %lu\n", completions.load(), failureRate);
-    fflush(stdout);
-    printf("%lu\n",Cycles::rdtsc());
-    fflush(stdout);
-
-    // Check for ramp-down
-    usleep(1000000);
-    printf("%lu\n",Cycles::rdtsc());
-    fflush(stdout);
+    // Shutdown immediately to avoid overcounting.
     Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
@@ -130,9 +139,19 @@ installSignalHandler() {
 int main() {
     // Catch intermittent errors
     installSignalHandler();
+    CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
+    Arachne::Logger::setLogLevel(Arachne::NOTICE);
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 4;
     Arachne::init();
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
+
+
+    // Output latency and throughput
+    // Translate cycles to nanoseconds
+    for (size_t i = 0; i < completions; i++)
+        latencies[i] = Cycles::toNanoseconds(latencies[i]);
+    printf("Throughput = %lf requests / second \n", static_cast<double>(completions.load()) / experimentDurationInSeconds);
+    printStatistics("RequestCompletionLatency", latencies, completions, "data");
 }
