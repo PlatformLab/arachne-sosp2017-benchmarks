@@ -15,31 +15,24 @@ extern bool disableLoadEstimation;
 }
 
 // Support a maximum of 100 million entries.
-#define MAX_ENTRIES 1 << 27
+#define MAX_ENTRIES (1 << 27)
 
 uint64_t latencies[MAX_ENTRIES];
-
-double experimentDurationInSeconds = 5;
-
-// Number of creations per second
-double creationsPerSecond = 2000000U;
-
-// NB: This number is in nanoseconds, but the granularity of our cycle
-// measruements are in the 10's of ns, so differences of less than 10 ns
-// are not meaningful.
-uint64_t durationPerThread = 2000;
 
 std::atomic<uint64_t> completions;
 std::atomic<uint64_t> failures;
 
 struct Interval {
-    double creationsPerSecond;
-    uint64_t durationPerThread;
     uint64_t timeToRun;
+
+    // NB: This number is in nanoseconds, but the granularity of our cycle
+    // measruements are in the 10's of ns, so differences of less than 10 ns
+    // are not meaningful.
+    uint64_t durationPerThread;
+    double creationsPerSecond;
 } *intervals;
 
 size_t numIntervals;
-
 /**
   * Spin for duration cycles, and then compute latency from creation time.
   */
@@ -52,33 +45,51 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
 
 void dispatch() {
     // Page in our data store
-    memset(latencies, 0, MAX_ENTRIES);
+    memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
-    // Prevent schedulign onto this core, since threads scheduled to this core
+    // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
 	Arachne::makeExclusiveOnCore();
 
+    // Initialize interval
+    size_t currentInterval = 0;
+
     // Start with a DCFT-style implementation based on shared-memory for communication
     // If that becomes too expensive, then switch to a separate thread for commands.
-    uint64_t cyclesPerThread = Cycles::fromNanoseconds(durationPerThread);
+    uint64_t cyclesPerThread = Cycles::fromNanoseconds(intervals[currentInterval].durationPerThread);
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
 
-    std::exponential_distribution<double> intervalGenerator(creationsPerSecond);
-    printf("%.10f %.10f\n", 1.0/creationsPerSecond, intervalGenerator(gen));
+    std::exponential_distribution<double> intervalGenerator(intervals[currentInterval].creationsPerSecond);
+//    printf("%.10f %.10f\n", 1.0/creationsPerSecond, intervalGenerator(gen));
     uint64_t nextCycleTime = Cycles::rdtsc() +
 		Cycles::fromSeconds(intervalGenerator(gen));
 
     uint64_t currentTime = Cycles::rdtsc();
-    uint64_t finalTime = currentTime + Cycles::fromSeconds(experimentDurationInSeconds);
+    uint64_t nextIntervalTime = currentTime +
+        Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
     // DCFT loop
-    for (; currentTime < finalTime ; currentTime = Cycles::rdtsc()) {
+    for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             nextCycleTime = currentTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
             if (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread)
                 failures++;
+        }
+
+        // Advance the interval
+        if (nextIntervalTime < currentTime) {
+            currentInterval++;
+            if (currentInterval == numIntervals) break;
+            nextIntervalTime = currentTime +
+                Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
+            cyclesPerThread =
+                Cycles::fromNanoseconds(
+                        intervals[currentInterval].durationPerThread);
+            intervalGenerator.param(
+                    std::exponential_distribution<double>::param_type(
+                    intervals[currentInterval].creationsPerSecond));
         }
     }
     // Shutdown immediately to avoid overcounting.
@@ -172,10 +183,10 @@ int main(int argc, char** argv) {
     Arachne::waitForTermination();
 
 
-    // Output latency and throughput
+    // Output latency and throughput for each period.
     // Translate cycles to nanoseconds
-    for (size_t i = 0; i < completions; i++)
-        latencies[i] = Cycles::toNanoseconds(latencies[i]);
-    printf("Throughput = %lf requests / second \n", static_cast<double>(completions.load()) / experimentDurationInSeconds);
-    printStatistics("RequestCompletionLatency", latencies, completions, "data");
+//    for (size_t i = 0; i < completions; i++)
+//        latencies[i] = Cycles::toNanoseconds(latencies[i]);
+//    printf("Throughput = %lf requests / second \n", static_cast<double>(completions.load()) / experimentDurationInSeconds);
+//    printStatistics("RequestCompletionLatency", latencies, completions, "data");
 }
