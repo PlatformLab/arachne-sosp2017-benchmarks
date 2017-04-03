@@ -5,10 +5,11 @@
 #include <unistd.h>
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
-#include "CoreArbiter/Logger.h"
 #include "Stats.h"
+#include "CoreArbiter/Logger.h"
 
 using PerfUtils::Cycles;
+
 namespace Arachne{
 extern bool disableLoadEstimation;
 }
@@ -18,11 +19,10 @@ extern bool disableLoadEstimation;
 
 uint64_t latencies[MAX_ENTRIES];
 
-// TODO: Use shared memory to expose these controls.
 double experimentDurationInSeconds = 5;
 
 // Number of creations per second
-double creationsPerSecond = 1000000U;
+double creationsPerSecond = 2000000U;
 
 // NB: This number is in nanoseconds, but the granularity of our cycle
 // measruements are in the 10's of ns, so differences of less than 10 ns
@@ -30,7 +30,15 @@ double creationsPerSecond = 1000000U;
 uint64_t durationPerThread = 2000;
 
 std::atomic<uint64_t> completions;
-std::atomic<uint64_t> failureRate;
+std::atomic<uint64_t> failures;
+
+struct Interval {
+    double creationsPerSecond;
+    uint64_t durationPerThread;
+    uint64_t timeToRun;
+} *intervals;
+
+size_t numIntervals;
 
 /**
   * Spin for duration cycles, and then compute latency from creation time.
@@ -52,13 +60,7 @@ void dispatch() {
 
     // Start with a DCFT-style implementation based on shared-memory for communication
     // If that becomes too expensive, then switch to a separate thread for commands.
-
-    // Note that this controlling thread will necessarily burn up an entire core, since
-    // it has to poll to see whether it should issue more requests as well as
-    // polling on shared memory for commands.
-
     uint64_t cyclesPerThread = Cycles::fromNanoseconds(durationPerThread);
-
 
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -76,7 +78,7 @@ void dispatch() {
             nextCycleTime = currentTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
             if (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread)
-                failureRate++;
+                failures++;
         }
     }
     // Shutdown immediately to avoid overcounting.
@@ -136,13 +138,35 @@ installSignalHandler() {
  * well, but we haven't yet done that.
  */
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        printf("Please specify a configuration file!\n");
+        exit(1);
+    }
+    // First argument specifies a configuration file with the following format
+    // <count_of_rows>
+    // <time_to_run_in_ns> <attempted_creations_per_second> <thread_duration_in_ns>
+    FILE *specFile = fopen(argv[1], "r");
+    char buffer[1024];
+    fgets(buffer, 1024, specFile);
+    sscanf(buffer, "%zu", &numIntervals);
+    intervals = new Interval[numIntervals];
+    for (size_t i = 0; i < numIntervals; i++) {
+        fgets(buffer, 1024, specFile);
+        sscanf(buffer, "%lu %lf %lu",
+                &intervals[i].timeToRun,
+                &intervals[i].creationsPerSecond,
+                &intervals[i].durationPerThread);
+    }
+    fclose(specFile);
+
+
     // Catch intermittent errors
     installSignalHandler();
     CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
     Arachne::Logger::setLogLevel(Arachne::NOTICE);
 	Arachne::minNumCores = 2;
-	Arachne::maxNumCores = 4;
+	Arachne::maxNumCores = 5;
     Arachne::init();
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
