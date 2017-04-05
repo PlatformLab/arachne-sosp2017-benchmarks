@@ -7,3 +7,9 @@ SyntheticWorkload
 # Log files and text files
 *.txt
 *.log
+
+# Disassembled files
+*.S
+
+# Data belongs in the main paper repository
+data/

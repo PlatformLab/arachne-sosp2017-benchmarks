@@ -194,6 +194,7 @@ int main(int argc, char** argv) {
 
     double total = static_cast<double>(completions) + static_cast<double>(failures);
     printf("Thread creation failure rate = %lf\n", static_cast<double>(failures.load()) / total);
+    printf("Total Attempted Creations    = %lf\n", total);
 
     // Output latency and throughput for each period.
     // Translate cycles to nanoseconds
