@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
+#include "PerfUtils/TimeTrace.h"
 #include "Stats.h"
 #include "CoreArbiter/Logger.h"
 
@@ -13,6 +14,8 @@ using PerfUtils::Cycles;
 namespace Arachne{
 extern bool disableLoadEstimation;
 }
+
+using PerfUtils::TimeTrace;
 
 // Support a maximum of 100 million entries.
 #define MAX_ENTRIES (1 << 27)
@@ -80,6 +83,7 @@ void dispatch() {
 
         // Advance the interval
         if (nextIntervalTime < currentTime) {
+            TimeTrace::record("Before change interval");
             currentInterval++;
             if (currentInterval == numIntervals) break;
             nextIntervalTime = currentTime +
@@ -90,6 +94,7 @@ void dispatch() {
             intervalGenerator.param(
                     std::exponential_distribution<double>::param_type(
                     intervals[currentInterval].creationsPerSecond));
+            TimeTrace::record("After change interval");
         }
     }
     // Shutdown immediately to avoid overcounting.
@@ -175,13 +180,20 @@ int main(int argc, char** argv) {
     // Catch intermittent errors
     installSignalHandler();
     CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
-    Arachne::Logger::setLogLevel(Arachne::NOTICE);
+    Arachne::Logger::setLogLevel(Arachne::WARNING);
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
+    Arachne::setErrorStream(stdout);
     Arachne::init();
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
 
+    TimeTrace::setOutputFileName("LoadScaling.log");
+    TimeTrace::print();
+    printf("Completions = %lu\nFailures = %lu\n", completions.load(), failures.load());
+
+    double total = static_cast<double>(completions) + static_cast<double>(failures);
+    printf("Thread creation failure rate = %lf\n", static_cast<double>(failures.load()) / total);
 
     // Output latency and throughput for each period.
     // Translate cycles to nanoseconds
