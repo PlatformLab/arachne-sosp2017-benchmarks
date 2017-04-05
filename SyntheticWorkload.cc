@@ -160,7 +160,14 @@ installSignalHandler() {
  * well, but we haven't yet done that.
  */
 
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
+    CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
+    Arachne::Logger::setLogLevel(Arachne::WARNING);
+	Arachne::minNumCores = 2;
+	Arachne::maxNumCores = 5;
+    Arachne::setErrorStream(stdout);
+    Arachne::init(&argc, argv);
+
     if (argc < 2) {
         printf("Please specify a configuration file!\n");
         exit(1);
@@ -169,6 +176,10 @@ int main(int argc, char** argv) {
     // <count_of_rows>
     // <time_to_run_in_ns> <attempted_creations_per_second> <thread_duration_in_ns>
     FILE *specFile = fopen(argv[1], "r");
+    if (!specFile) {
+        printf("Configuration file '%s' non existent!\n", argv[1]);
+        exit(1);
+    }
     char buffer[1024];
     fgets(buffer, 1024, specFile);
     sscanf(buffer, "%zu", &numIntervals);
@@ -182,15 +193,8 @@ int main(int argc, char** argv) {
     }
     fclose(specFile);
 
-
     // Catch intermittent errors
     installSignalHandler();
-    CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
-    Arachne::Logger::setLogLevel(Arachne::WARNING);
-	Arachne::minNumCores = 2;
-	Arachne::maxNumCores = 5;
-    Arachne::setErrorStream(stdout);
-    Arachne::init();
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
 
