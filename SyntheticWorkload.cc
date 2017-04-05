@@ -73,6 +73,7 @@ void dispatch() {
     uint64_t nextIntervalTime = currentTime +
         Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
     // DCFT loop
+    TimeTrace::record("Beginning of benchmark");
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             nextCycleTime = currentTime +
@@ -83,9 +84,12 @@ void dispatch() {
 
         // Advance the interval
         if (nextIntervalTime < currentTime) {
-            TimeTrace::record("Before change interval");
             currentInterval++;
             if (currentInterval == numIntervals) break;
+            TimeTrace::record("Load Change START %u --> %u Creations Per Second.",
+                    static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
+                    static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
+
             nextIntervalTime = currentTime +
                 Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
             cyclesPerThread =
@@ -94,7 +98,9 @@ void dispatch() {
             intervalGenerator.param(
                     std::exponential_distribution<double>::param_type(
                     intervals[currentInterval].creationsPerSecond));
-            TimeTrace::record("After change interval");
+            TimeTrace::record("Load Change END %u --> %u Creations Per Second.",
+                    static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
+                    static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
         }
     }
     // Shutdown immediately to avoid overcounting.
