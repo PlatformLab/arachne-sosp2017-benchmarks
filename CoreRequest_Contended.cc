@@ -24,22 +24,17 @@ void highPriorityRequest(CoreArbiterClient& client,
     while (client.getNumOwnedCores() < 2);
 
     for (int i = 0; i < NUM_TRIALS; i++) {
-        LOG(ERROR, "*** %d ***\n", i);
-        LOG(ERROR, "About to request fewer cores\n");
         client.setNumCores({1,0,0,0,0,0,0,0});
-        LOG(ERROR, "Requested fewer cores\n");
+        LOG(ERROR, "Requested fewer cores. ID = %d\n", i);
         while (client.getNumBlockedThreadsFromServer() == 0);
-        LOG(ERROR, "High priority thread blocked\n");
         while (!(*lowPriorityRunning));
-        LOG(ERROR, "About to request more cores\n");
         client.setNumCores({2,0,0,0,0,0,0,0});
-        LOG(ERROR, "Requested more cores\n");
+        LOG(ERROR, "Requested more cores. ID = %d\n", i);
         uint32_t numBlockedThreads;
         while(*(lowPriorityRunning));
         do {
             numBlockedThreads = client.getNumBlockedThreads();
         } while(numBlockedThreads == 1);
-        LOG(ERROR, "numBlockedThreads = %u\n", numBlockedThreads);
         // while(client.getNumBlockedThreads() == 1);
     }
 
@@ -54,11 +49,10 @@ void highPriorityBlock(CoreArbiterClient& client) {
     while (client.getNumOwnedCores() < 2);
 
     for (int i = 0; i < NUM_TRIALS; i++) {
-        LOG(ERROR, "!!! %d !!!\n", i);
         while (!client.mustReleaseCore());
-        LOG(ERROR, "High priority core release requested\n");
+        LOG(ERROR, "High priority blocking. ID = %d\n", i);
         client.blockUntilCoreAvailable();
-        LOG(ERROR, "High priority core acquired.\n");
+        LOG(ERROR, "High priority unblocked. ID = %d\n", i);
     }
 
     LOG(ERROR, "!!!!!!!!!!!!!!!\n");
@@ -79,15 +73,15 @@ void lowPriorityExec(CoreArbiterClient& client,
     for (int i = 0; i < NUM_TRIALS; i++) {
         LOG(ERROR, "### %d ###\n", i);
         while (!client.mustReleaseCore());
-        LOG(ERROR, "Low priority core release requested\n");
+        LOG(ERROR, "Low priority blocking. ID = %d\n", i);
         *lowPriorityRunning = false;
         client.blockUntilCoreAvailable();
-        LOG(ERROR, "Low priority core acquired\n");
+        LOG(ERROR, "Low priority unblocked. ID = %d\n", i);
         *lowPriorityRunning = true;
     }
 
     while (!client.mustReleaseCore());
-    LOG(ERROR, "Low priority core release requested\n");
+    LOG(ERROR, "Low priority thread exiting\n");
     *lowPriorityRunning = false;
 
     LOG(ERROR, "################\n");
@@ -95,7 +89,7 @@ void lowPriorityExec(CoreArbiterClient& client,
 }
 
 int main(){
-    Logger::setLogLevel(NOTICE);
+    Logger::setLogLevel(WARNING);
 
     int sharedMemFd = open("benchmark_sharedmem",
                            O_CREAT | O_RDWR | O_TRUNC, S_IRWXU);
