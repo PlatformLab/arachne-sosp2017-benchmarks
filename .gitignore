@@ -13,3 +13,6 @@ SyntheticWorkload
 
 # Data belongs in the main paper repository
 data/
+
+# Misc files
+tags
