@@ -3,6 +3,7 @@ CoreRequest_Noncontended
 CoreRequest_Contended
 CoreRequest_Contended_Timeout
 SyntheticWorkload
+ThreadCreationScalability
 ExtractStats
 
 # Log files and text files
