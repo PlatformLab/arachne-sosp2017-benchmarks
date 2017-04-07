@@ -6,6 +6,8 @@ UNIFIED_BENCHMARK_BINS = SyntheticWorkload
 
 all: $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS)
 
+ExtractStats:
+
 $(ARBITER_BENCHMARK_BINS) : % : %.cc CoreArbiter/libCoreArbiter.a
 	g++  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
 
