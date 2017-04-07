@@ -26,25 +26,39 @@ struct TLSCounter {
 thread_local TLSCounter tlsCounter;
 
 std::atomic<uint64_t> TLSCounter::globalCount;
-std::atomic<bool> shutdown;
+
+// Both of these times are in cycles
+std::atomic<uint64_t> stopTime;
 std::atomic<uint64_t> startTime;
+
+// This time is in seconds
 std::atomic<double> duration;
 
+Arachne::Semaphore done;
+
 void creator() {
-	if (Arachne::createThread(creator) == Arachne::NullThread) {
-		if (!shutdown)
+    if (Cycles::rdtsc() < stopTime) {
+        if (Arachne::createThread(creator) == Arachne::NullThread) {
 			abort();
-		else
-			return;
-	}
-	tlsCounter.increment();
+        }
+        tlsCounter.increment();
+    } else {
+        done.notify();
+    }
 }
 
-void timeKeeper(int seconds) {
-    Arachne::sleep(seconds * static_cast<uint64_t>(1E9));
-	shutdown = true;
-	Arachne::shutDown();
+void timeKeeper(int numCores, int seconds) {
+	startTime = Cycles::rdtsc();
+    uint64_t durationInCycles = Cycles::fromSeconds(seconds);
+    stopTime = Cycles::rdtsc() + durationInCycles;
+	for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
+		Arachne::createThread(creator);
+    // Wait for all threads to finish, using a semaphor
+	for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
+        done.wait();
+
 	duration = Cycles::toSeconds(Cycles::rdtsc() - startTime);
+	Arachne::shutDown();
 }
 
 /**
@@ -62,10 +76,7 @@ int main(int argc, const char** argv) {
     Arachne::maxNumCores = numCores;
     Arachne::init(&argc, argv);
 
-	startTime = Cycles::rdtsc();
-    Arachne::createThread(timeKeeper, numSeconds);
-	for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
-		Arachne::createThread(creator);
+    Arachne::createThread(timeKeeper, numCores, numSeconds);
     Arachne::waitForTermination();
 	printf("Thread Creations Per Second: %lf\n", static_cast<double>(TLSCounter::globalCount.load()) / duration);
     return 0;
