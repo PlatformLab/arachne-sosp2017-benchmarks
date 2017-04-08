@@ -38,7 +38,8 @@ Arachne::Semaphore done;
 
 void creator() {
     if (Cycles::rdtsc() < stopTime) {
-        if (Arachne::createThread(creator) == Arachne::NullThread) {
+        if (Arachne::createThreadOnCore(Arachne::loadedContext->coreId, creator) ==
+                Arachne::NullThread) {
 			abort();
         }
         tlsCounter.increment();
