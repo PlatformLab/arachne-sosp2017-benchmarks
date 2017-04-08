@@ -77,8 +77,7 @@ int main(int argc, const char** argv) {
 
     Arachne::createThread(timeKeeper, numCores, numSeconds);
     Arachne::waitForTermination();
-	printf("Total Thread Creations: %lu\n", TLSCounter::globalCount.load());
-	printf("Thread Time in Nanoseconds: %lu\n",  static_cast<uint64_t>(duration*1E9));
-	printf("Thread Creations Per Second: %lf\n", static_cast<double>(TLSCounter::globalCount.load()) / duration);
+    printf("%d,%d,%lu\n", numSeconds, numCores, static_cast<uint64_t>(
+                static_cast<double>(TLSCounter::globalCount.load()) / duration));
     return 0;
 }
