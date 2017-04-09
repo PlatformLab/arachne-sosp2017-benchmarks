@@ -5,6 +5,7 @@ CoreRequest_Contended_Timeout
 SyntheticWorkload
 ThreadCreationScalability
 ExtractStats
+VaryCoreIncreaseThreshold
 
 # Log files and text files
 *.txt
