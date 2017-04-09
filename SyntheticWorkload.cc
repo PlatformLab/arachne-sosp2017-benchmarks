@@ -243,8 +243,8 @@ int main(int argc, const char** argv) {
             perfStats[i-1].collectionTime);
         uint64_t idleCycles = perfStats[i].idleCycles - perfStats[i-1].idleCycles;
         uint64_t totalCycles = perfStats[i].totalCycles - perfStats[i-1].totalCycles;
-        double utilization =
-            static_cast<double>(totalCycles - idleCycles) / static_cast<double>(totalCycles);
+        double utilization = static_cast<double>(totalCycles - idleCycles) /
+            static_cast<double>(totalCycles);
 
         // Note that this is completed tasks per second, where each task is currently 2 us
         uint64_t throughput = static_cast<uint64_t>(
