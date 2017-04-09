@@ -200,7 +200,12 @@ int main(int argc, const char** argv) {
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
 
-    TimeTrace::setOutputFileName("LoadScaling.log");
+    size_t index = rindex(argv[1], static_cast<int>('.')) - argv[1];
+    char outTraceFileName[1024];
+    strncpy(outTraceFileName, argv[1], index);
+    outTraceFileName[index] = '\0';
+    strncat(outTraceFileName, ".log", 4);
+    TimeTrace::setOutputFileName(outTraceFileName);
     TimeTrace::keepOldEvents = true;
     TimeTrace::print();
     printf("Completions = %lu\nFailures = %lu\n", completions.load(), failures.load());
