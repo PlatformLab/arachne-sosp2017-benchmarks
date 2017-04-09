@@ -235,6 +235,15 @@ int main(int argc, const char** argv) {
     TimeTrace::keepOldEvents = true;
     TimeTrace::print();
 
+    // Sanity check
+    if (arrayIndex >= MAX_ENTRIES) {
+        puts("Guaranteed memory corruption.");
+        abort();
+    }
+
+    // Convert latencies to ns
+    for (size_t i = 0; i < arrayIndex; i++)
+        latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
     puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput");
