@@ -163,15 +163,17 @@ installSignalHandler() {
 int main(int argc, const char** argv) {
     CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
     Arachne::Logger::setLogLevel(Arachne::WARNING);
-	Arachne::minNumCores = 2;
-	Arachne::maxNumCores = 5;
-    Arachne::setErrorStream(stdout);
-    Arachne::init(&argc, argv);
 
     if (argc < 2) {
         printf("Please specify a configuration file!\n");
         exit(1);
     }
+
+	Arachne::minNumCores = 2;
+	Arachne::maxNumCores = 5;
+    Arachne::setErrorStream(stdout);
+    Arachne::init(&argc, argv);
+
     // First argument specifies a configuration file with the following format
     // <count_of_rows>
     // <time_to_run_in_ns> <attempted_creations_per_second> <thread_duration_in_ns>
@@ -199,6 +201,7 @@ int main(int argc, const char** argv) {
     Arachne::waitForTermination();
 
     TimeTrace::setOutputFileName("LoadScaling.log");
+    TimeTrace::keepOldEvents = true;
     TimeTrace::print();
     printf("Completions = %lu\nFailures = %lu\n", completions.load(), failures.load());
 
