@@ -10,6 +10,7 @@
 #include "CoreArbiter/Logger.h"
 
 using PerfUtils::Cycles;
+using Arachne::PerfStats;
 
 namespace Arachne{
 extern bool disableLoadEstimation;
@@ -22,7 +23,7 @@ using PerfUtils::TimeTrace;
 
 uint64_t latencies[MAX_ENTRIES];
 
-std::atomic<uint64_t> completions;
+std::atomic<uint64_t> arrayIndex;
 std::atomic<uint64_t> failures;
 
 struct Interval {
@@ -36,6 +37,16 @@ struct Interval {
 } *intervals;
 
 size_t numIntervals;
+
+// The values of arrayIndex before each change in load, which we can use later
+// to compute latency and throughput. Note that this value and perfStats
+// are not read atomically, but we believe the difference should be
+// negligible.
+std::vector<uint64_t> indices;
+// The performance statistics before each change in load, which we can use
+// later to compute utilization.
+std::vector<PerfStats> perfStats;
+
 /**
   * Spin for duration cycles, and then compute latency from creation time.
   */
@@ -43,7 +54,7 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
     uint64_t stop = Cycles::rdtsc() + duration;
     while (Cycles::rdtsc() < stop);
     uint64_t latency = Cycles::rdtsc() - creationTime;
-    latencies[completions++] = latency;
+    latencies[arrayIndex++] = latency;
 }
 
 void dispatch() {
@@ -65,15 +76,23 @@ void dispatch() {
 	std::mt19937 gen(rd());
 
     std::exponential_distribution<double> intervalGenerator(intervals[currentInterval].creationsPerSecond);
-//    printf("%.10f %.10f\n", 1.0/creationsPerSecond, intervalGenerator(gen));
     uint64_t nextCycleTime = Cycles::rdtsc() +
 		Cycles::fromSeconds(intervalGenerator(gen));
+
+
+    PerfStats stats;
+    PerfStats::collectStats(&stats);
+
+    indices.push_back(arrayIndex);
+    perfStats.push_back(stats);
 
     uint64_t currentTime = Cycles::rdtsc();
     uint64_t nextIntervalTime = currentTime +
         Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
-    // DCFT loop
+
     TimeTrace::record("Beginning of benchmark");
+
+    // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             nextCycleTime = currentTime +
@@ -82,8 +101,13 @@ void dispatch() {
                 failures++;
         }
 
-        // Advance the interval
         if (nextIntervalTime < currentTime) {
+            // Collect latency, throughput, and core utilization information from the past interval
+            PerfStats::collectStats(&stats);
+            indices.push_back(arrayIndex);
+            perfStats.push_back(stats);
+
+            // Advance the interval
             currentInterval++;
             if (currentInterval == numIntervals) break;
             TimeTrace::record("Load Change START %u --> %u Creations Per Second.",
@@ -101,6 +125,7 @@ void dispatch() {
             TimeTrace::record("Load Change END %u --> %u Creations Per Second.",
                     static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
                     static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
+
         }
     }
     // Shutdown immediately to avoid overcounting.
@@ -200,6 +225,7 @@ int main(int argc, const char** argv) {
     Arachne::createThread(dispatch);
     Arachne::waitForTermination();
 
+    // Output TimeTrace for human reading
     size_t index = rindex(argv[1], static_cast<int>('.')) - argv[1];
     char outTraceFileName[1024];
     strncpy(outTraceFileName, argv[1], index);
@@ -208,16 +234,36 @@ int main(int argc, const char** argv) {
     TimeTrace::setOutputFileName(outTraceFileName);
     TimeTrace::keepOldEvents = true;
     TimeTrace::print();
-    printf("Completions = %lu\nFailures = %lu\n", completions.load(), failures.load());
 
-    double total = static_cast<double>(completions) + static_cast<double>(failures);
-    printf("Thread creation failure rate = %lf\n", static_cast<double>(failures.load()) / total);
-    printf("Total Attempted Creations    = %lf\n", total);
+    // Output core utilization, median & 99% latency, and throughput for each interval in a
+    // plottable format.
+    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput");
+    for (size_t i = 1; i < indices.size(); i++) {
+        double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
+            perfStats[i-1].collectionTime);
+        uint64_t idleCycles = perfStats[i].idleCycles - perfStats[i-1].idleCycles;
+        uint64_t totalCycles = perfStats[i].totalCycles - perfStats[i-1].totalCycles;
+        double utilization =
+            static_cast<double>(totalCycles - idleCycles) / static_cast<double>(totalCycles);
 
-    // Output latency and throughput for each period.
-    // Translate cycles to nanoseconds
-//    for (size_t i = 0; i < completions; i++)
-//        latencies[i] = Cycles::toNanoseconds(latencies[i]);
-//    printf("Throughput = %lf requests / second \n", static_cast<double>(completions.load()) / experimentDurationInSeconds);
-//    printStatistics("RequestCompletionLatency", latencies, completions, "data");
+        // Note that this is completed tasks per second, where each task is currently 2 us
+        uint64_t throughput = static_cast<uint64_t>(
+                static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
+
+        // Median and 99% Latency
+        // Note that this computation will modify data
+        Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
+        printf("%lf,%lf,%lf,%lu,%lu,%lu\n", durationOfInterval,
+                intervals[i-1].creationsPerSecond, utilization,
+                mathStats.median, mathStats.P99,throughput);
+    }
+
+    // Output times at which cores changed, relative to the start time.
+
+//    // Other miscellaneous information
+//    printf("Completions = %lu\nFailures = %lu\n", arrayIndex.load(), failures.load());
+//    double total = static_cast<double>(arrayIndex) + static_cast<double>(failures);
+//    printf("Thread creation failure rate = %lf\n", static_cast<double>(failures.load()) / total);
+//    printf("Total Attempted Creations    = %lf\n", total);
+//
 }
