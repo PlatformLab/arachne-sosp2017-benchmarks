@@ -24,7 +24,6 @@ using PerfUtils::TimeTrace;
 uint64_t latencies[MAX_ENTRIES];
 
 std::atomic<uint64_t> arrayIndex;
-std::atomic<uint64_t> failures;
 
 struct Interval {
     uint64_t timeToRun;
@@ -95,10 +94,12 @@ void dispatch() {
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
+            // Keep trying to create this thread until we succeed.
+            while (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread);
+
+            // Compute the next cycle time only after we win successfully
             nextCycleTime = currentTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
-            if (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread)
-                failures++;
         }
 
         if (nextIntervalTime < currentTime) {
@@ -187,7 +188,7 @@ installSignalHandler() {
 
 int main(int argc, const char** argv) {
     CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
-    Arachne::Logger::setLogLevel(Arachne::WARNING);
+    Arachne::Logger::setLogLevel(Arachne::DEBUG);
 
     if (argc < 2) {
         printf("Please specify a configuration file!\n");
@@ -196,7 +197,7 @@ int main(int argc, const char** argv) {
 
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
-    Arachne::setErrorStream(stdout);
+    Arachne::setErrorStream(stderr);
     Arachne::init(&argc, argv);
 
     // First argument specifies a configuration file with the following format
@@ -246,7 +247,7 @@ int main(int argc, const char** argv) {
         latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput");
+    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core Count Changes");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
@@ -259,20 +260,24 @@ int main(int argc, const char** argv) {
         uint64_t throughput = static_cast<uint64_t>(
                 static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
 
+        // Compute load factor.
+        uint64_t numThreadsRan = perfStats[i].numThreadsRan - perfStats[i-1].numThreadsRan;
+        uint64_t numDispatchCycles = perfStats[i].numDispatchCycles - perfStats[i-1].numDispatchCycles;
+        double loadFactor = static_cast<double>(numThreadsRan) / static_cast<double>(numDispatchCycles);
+
+        // Compute core count changes
+        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
+        uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
+        uint64_t coreCountChanges = numDecrements + numIncrements;
+
         // Median and 99% Latency
         // Note that this computation will modify data
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
-        printf("%lf,%lf,%lf,%lu,%lu,%lu\n", durationOfInterval,
+        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization,
-                mathStats.median, mathStats.P99,throughput);
+                mathStats.median, mathStats.P99,throughput,
+                loadFactor, coreCountChanges);
     }
 
     // Output times at which cores changed, relative to the start time.
-
-//    // Other miscellaneous information
-//    printf("Completions = %lu\nFailures = %lu\n", arrayIndex.load(), failures.load());
-//    double total = static_cast<double>(arrayIndex) + static_cast<double>(failures);
-//    printf("Thread creation failure rate = %lf\n", static_cast<double>(failures.load()) / total);
-//    printf("Total Attempted Creations    = %lf\n", total);
-//
 }
