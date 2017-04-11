@@ -261,9 +261,8 @@ int main(int argc, const char** argv) {
                 static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
 
         // Compute load factor.
-        uint64_t numThreadsRan = perfStats[i].numThreadsRan - perfStats[i-1].numThreadsRan;
-        uint64_t numDispatchCycles = perfStats[i].numDispatchCycles - perfStats[i-1].numDispatchCycles;
-        double loadFactor = static_cast<double>(numThreadsRan) / static_cast<double>(numDispatchCycles);
+        uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
+        double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
 
         // Compute core count changes
         uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
