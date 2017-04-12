@@ -7,13 +7,18 @@
 #include "Cycles.h"
 #include "TimeTrace.h"
 #include "Util.h"
+#include "Stats.h"
 
 using PerfUtils::TimeTrace;
 using PerfUtils::Cycles;
 using CoreArbiter::CoreArbiterClient;
 using namespace CoreArbiter;
 
-#define NUM_TRIALS 1000
+#define NUM_TRIALS 1000000
+
+std::atomic<uint64_t> startCycles(0);
+uint64_t arrayIndex = 0;
+uint64_t latencies[NUM_TRIALS];
 
 void highPriorityRequest(CoreArbiterClient& client,
                          volatile bool* lowPriorityRunning) {
@@ -23,15 +28,12 @@ void highPriorityRequest(CoreArbiterClient& client,
     while (client.getNumOwnedCores() < 2);
 
     for (int i = 0; i < NUM_TRIALS; i++) {
-        TimeTrace::record("About to request fewer cores");
         client.setNumCores({1,0,0,0,0,0,0,0});
-        TimeTrace::record("Requested fewer cores");
         while (client.getNumBlockedThreadsFromServer() == 0);
-        TimeTrace::record("High priority thread blocked");
         while (!(*lowPriorityRunning));
-        TimeTrace::record("About to request more cores");
+
+        startCycles = Cycles::rdtsc();
         client.setNumCores({2,0,0,0,0,0,0,0});
-        TimeTrace::record("Requested more cores");
         while(client.getNumBlockedThreads() == 1);
     }
 
@@ -46,9 +48,9 @@ void highPriorityBlock(CoreArbiterClient& client) {
 
     for (int i = 0; i < NUM_TRIALS; i++) {
         while (!client.mustReleaseCore());
-        TimeTrace::record("High priority core release requested.");
         client.blockUntilCoreAvailable();
-        TimeTrace::record("High priority core acquired.");
+        uint64_t endCycles = Cycles::rdtsc();
+        latencies[arrayIndex++] = endCycles - startCycles;
     }
 
     client.unregisterThread();
@@ -65,10 +67,8 @@ void lowPriorityExec(CoreArbiterClient& client,
 
     for (int i = 0; i < NUM_TRIALS; i++) {
         while (!client.mustReleaseCore());
-        TimeTrace::record("Low priority core release requested");
         *lowPriorityRunning = false;
         client.blockUntilCoreAvailable();
-        TimeTrace::record("Low priority core acquired");
         *lowPriorityRunning = true;
     }
 
@@ -111,15 +111,14 @@ int main(){
         highPriorityThread1.join();
         highPriorityThread2.join();
 
-        TimeTrace::setOutputFileName("CoreRequest_Contended_HighPriority.log");
-        TimeTrace::print();
+        for (int i = 0; i < NUM_TRIALS; i++) {
+            latencies[i] = Cycles::toNanoseconds(latencies[i]);
+        }
+        printStatistics("core_request_cooperative_latencies", latencies, NUM_TRIALS, "data");
     } else  {
         CoreArbiterClient& client =
             CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
         lowPriorityExec(client, lowPriorityRunning);
-
-        TimeTrace::setOutputFileName("CoreRequest_Contended_LowPriority.log");
-        TimeTrace::print();
 
         wait();
     }
