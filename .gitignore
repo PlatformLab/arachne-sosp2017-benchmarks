@@ -7,6 +7,9 @@ ThreadCreationScalability
 ExtractStats
 VaryCoreIncreaseThreshold
 CoreAwareness
+CoreRequest_Contended_Latency
+CoreRequest_Contended_Timeout_Latency
+CoreRequest_Noncontended_Latency
 
 # Log files and text files
 *.txt
