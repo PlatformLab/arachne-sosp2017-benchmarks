@@ -14,8 +14,7 @@ using Arachne::PerfStats;
 
 namespace Arachne{
 extern bool disableLoadEstimation;
-extern double CORE_INCREASE_THRESHOLD;
-extern double IDLE_FRACTION_TO_DECREMENT;
+extern double maxIdleCoreFraction;
 }
 
 using PerfUtils::TimeTrace;
@@ -226,13 +225,12 @@ int main(int argc, const char** argv) {
     fclose(specFile);
 
     puts("Core Increase Threshold,Core Utilization,Median Latency,99\% Latency,Throughput");
-    for (double threshold = 0.1; threshold <= 1.0; threshold+=0.1) {
+    for (double threshold = 0.0; threshold <= 1.0; threshold+=0.01) {
         // TODO: Vary both the ramp-up and ramp-down factor; otherwise any
         // overly sensitive increase in core count will be rapidly countered by
         // a corresponding decrease.
         // TODO: Discuss with John the policy issues.
-        Arachne::CORE_INCREASE_THRESHOLD = threshold;
-        Arachne::IDLE_FRACTION_TO_DECREMENT = 1.0 + threshold;
+        Arachne::maxIdleCoreFraction = threshold;
         Arachne::createThread(dispatch);
         Arachne::waitForTermination();
 

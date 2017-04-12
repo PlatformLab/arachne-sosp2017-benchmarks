@@ -14,6 +14,7 @@ using Arachne::PerfStats;
 
 namespace Arachne{
 extern bool disableLoadEstimation;
+extern double maxIdleCoreFraction;
 }
 
 using PerfUtils::TimeTrace;
@@ -220,6 +221,11 @@ int main(int argc, const char** argv) {
                 &intervals[i].durationPerThread);
     }
     fclose(specFile);
+
+    // Second argument specifies the parameter d
+    if (argc > 2) {
+        Arachne::maxIdleCoreFraction = atof(argv[2]);
+    }
 
     // Catch intermittent errors
     installSignalHandler();
