@@ -247,7 +247,7 @@ int main(int argc, const char** argv) {
         latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core Count Changes");
+    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
@@ -265,17 +265,16 @@ int main(int argc, const char** argv) {
         double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
 
         // Compute core count changes
-        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
         uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
-        uint64_t coreCountChanges = numDecrements + numIncrements;
+        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
 
         // Median and 99% Latency
         // Note that this computation will modify data
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
-        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu\n", durationOfInterval,
+        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization,
                 mathStats.median, mathStats.P99,throughput,
-                loadFactor, coreCountChanges);
+                loadFactor, numIncrements, numDecrements);
     }
 
     // Output times at which cores changed, relative to the start time.
