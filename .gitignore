@@ -6,6 +6,7 @@ SyntheticWorkload
 ThreadCreationScalability
 ExtractStats
 VaryCoreIncreaseThreshold
+CoreAwareness
 
 # Log files and text files
 *.txt

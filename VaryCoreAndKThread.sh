@@ -12,5 +12,5 @@ fi
 
 # Vary cores and kernel threads
 sudo env "PATH=$PATH" TakeCores.sh $(seq 1 $1 | paste -s -d, /dev/stdin) 0 $$
-./SyntheticWorkload --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench
+./CoreAwareness --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench
 sudo env "PATH=$PATH" ReleaseCores.sh > /dev/null
