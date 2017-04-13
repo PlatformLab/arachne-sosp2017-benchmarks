@@ -10,7 +10,11 @@ if [ "$#" -ne 2 ]; then
     exit
 fi
 
+# Clean up state from previous (failed) runs
+PerfUtils/scripts/ReleaseCores.sh
+
 # Vary cores and kernel threads
-sudo env "PATH=$PATH" TakeCores.sh $(seq 1 $1 | paste -s -d, /dev/stdin) 0 $$
-./CoreAwareness --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench
-sudo env "PATH=$PATH" ReleaseCores.sh > /dev/null
+./CoreAwareness --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench 1 $(seq 2 $1 | paste -s -d, /dev/stdin) 0
+
+# Clean up cpusets
+PerfUtils/scripts/ReleaseCores.sh

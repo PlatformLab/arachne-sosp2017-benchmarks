@@ -1,13 +1,18 @@
+#include <fstream>
 #include <random>
 #include <thread>
 #include <signal.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "Stats.h"
 #include "CoreArbiter/Logger.h"
+
 
 using PerfUtils::Cycles;
 using Arachne::PerfStats;
@@ -46,6 +51,12 @@ std::vector<uint64_t> indices;
 // later to compute utilization.
 std::vector<PerfStats> perfStats;
 
+// Paths for cpuset directories
+std::string benchmarkCpusetPath = "/sys/fs/cgroup/cpuset/CoreAwarenessBenchmark";
+std::string dispatchCpusetPath = "/sys/fs/cgroup/cpuset/CoreAwarenessBenchmark/Dispatch";
+std::string applicationCpusetPath = "/sys/fs/cgroup/cpuset/CoreAwarenessBenchmark/Application";
+std::string othersCpusetPath = "/sys/fs/cgroup/cpuset/CoreAwarenessBenchmark/Others";
+
 /**
   * Spin for duration cycles, and then compute latency from creation time.
   */
@@ -56,27 +67,122 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
     latencies[arrayIndex++] = latency;
 }
 
-//std::vector<tid_type> tids;
-//void findMyTid() {
-//    // Make system call to get my tid
-//    tids.push_back(...);
-//}
+pid_t gettid() {
+    return (pid_t)syscall(SYS_gettid);
+}
+
+std::vector<pid_t> tids;
+void findMyTid() {
+   tids.push_back(gettid());
+}
+
+void createCpuset(std::string dirName, const char* cores)
+{
+    if (mkdir(dirName.c_str(),
+              S_IRUSR | S_IWUSR | S_IXUSR |
+              S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0) {
+        fprintf(stderr, "Error creating cpuset directory at %s: %s\n",
+                dirName.c_str(), strerror(errno));
+        exit(1);
+    }
+
+    std::string memsPath = dirName + "/cpuset.mems";
+    std::ofstream memsFile(memsPath);
+    if (!memsFile.is_open()) {
+        fprintf(stderr, "Unable to open %s\n", memsPath.c_str());
+        exit(1);
+    }
+    memsFile << "0";
+    memsFile.close();
+
+    std::string cpusPath = dirName + "/cpuset.cpus";
+    std::ofstream cpusFile(cpusPath);
+    if (!cpusFile.is_open()) {
+        fprintf(stderr, "Unable to open %s\n", cpusPath.c_str());
+        exit(1);
+    }
+    cpusFile << std::string(cores);
+    cpusFile.close();
+}
+
+void moveProcsToCpuset(std::string fromPath, std::string toPath)
+{
+    std::ifstream fromFile(fromPath);
+    if (!fromFile.is_open()) {
+        fprintf(stderr, "Unable to open %s\n", fromPath.c_str());
+        exit(1);
+    }
+
+    std::ofstream toFile(toPath);
+    if (!toFile.is_open()) {
+        fprintf(stderr, "Unable to open %s\n", toPath.c_str());
+        exit(1);
+    }
+
+    pid_t processId;
+    while (fromFile >> processId) {
+        toFile << processId;
+        toFile << std::endl;
+        if (toFile.bad()) {
+            // The ofstream errors out if we try to move a kernel process. This
+            // is normal behavior, but it means we need to reopen the file.
+            toFile.close();
+            toFile.open(toPath, std::fstream::app);
+            if (!toFile.is_open()) {
+                fprintf(stderr, "Unable top open %s\n", toPath.c_str());
+                exit(1);
+            }
+        }
+    }
+
+    fromFile.close();
+    toFile.close();
+}
+
+void moveThreadsToCpuset(std::vector<pid_t> tids, std::string cpusetPath) {
+    std::string tasksFilename = cpusetPath + "/tasks";
+    std::ofstream tasksFile(tasksFilename);
+    for (pid_t tid : tids) {
+        tasksFile << tid;
+        // Added the following line.
+        tasksFile << std::endl;
+        if (tasksFile.bad()) {
+            fprintf(stderr, "Error writing to %s\n", cpusetPath.c_str());
+            exit(1);
+        }
+    }
+
+    tasksFile.close();
+}
+
+void setupCpusets(const char* dispatchCore, const char* applicationCores,
+                  const char* otherCores) {
+    // Create a new cpuset directory for this benchmark. Since this is going to
+    // be a parent of all the individual cpusets, it needs to include every
+    // core.
+    std::string allCores =
+        "0-" + std::to_string(std::thread::hardware_concurrency() - 1);
+    createCpuset(benchmarkCpusetPath, allCores.c_str());
+
+    createCpuset(dispatchCpusetPath, dispatchCore);
+    createCpuset(applicationCpusetPath, applicationCores);
+    createCpuset(othersCpusetPath, otherCores);
+
+    // Move all of the currently running processes to the cpuset for other
+    // processes (dispatch and application threads should be moved to the
+    // appropriate cores after this)
+    moveProcsToCpuset("/sys/fs/cgroup/cpuset/cgroup.procs",
+                      othersCpusetPath + "/cgroup.procs");
+}
 
 void dispatch() {
-    // TODO: Figure out the tids for all Arachne kernel threads
-    // First get my own tid.
-    // TODO: Perform CPUset stuff here. Move the kernel thread at
-    // Arachne::kernelThreads[0] to the second argument, and the remainder to
-    // another cpuset with the cpus in the third argument.
-    // Thread handles are in Arachne::
-//    my_tid = // make magic system call
-//    // schedule a thread on each kernel thread to get its tid
-//    for (int i = 1; i < Arachne::kernelThreads.size(); i++) {
-//        Arachne::join(createThreadOnCore(i, findMyTid));
-//    }
-
-    // perform cpuset operations.
-
+    // Move threads to appropriate cpusets
+    printf("Arachne::numActiveCores = %u\n", Arachne::numActiveCores.load());
+    for (unsigned int i = 1; i < Arachne::numActiveCores; i++) {
+        Arachne::join(Arachne::createThreadOnCore(i, findMyTid));
+    }
+    moveThreadsToCpuset({gettid()}, dispatchCpusetPath);
+    moveThreadsToCpuset(tids, applicationCpusetPath);
 
     // Page in our data store
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
@@ -220,6 +326,12 @@ int main(int argc, const char** argv) {
 	Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
     Arachne::init(&argc, argv);
+
+    if (argc < 5) {
+        printf("Not enough arguments\n");
+        exit(1);
+    }
+    setupCpusets(argv[2], argv[3], argv[4]);
 
     // First argument specifies a configuration file with the following format
     // <count_of_rows>
