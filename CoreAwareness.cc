@@ -177,7 +177,6 @@ void setupCpusets(const char* dispatchCore, const char* applicationCores,
 
 void dispatch() {
     // Move threads to appropriate cpusets
-    printf("Arachne::numActiveCores = %u\n", Arachne::numActiveCores.load());
     for (unsigned int i = 1; i < Arachne::numActiveCores; i++) {
         Arachne::join(Arachne::createThreadOnCore(i, findMyTid));
     }

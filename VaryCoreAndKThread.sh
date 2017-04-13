@@ -11,10 +11,10 @@ if [ "$#" -ne 2 ]; then
 fi
 
 # Clean up state from previous (failed) runs
-PerfUtils/scripts/ReleaseCores.sh
+PerfUtils/scripts/ReleaseCores.sh > /dev/null
 
 # Vary cores and kernel threads
 ./CoreAwareness --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench 1 $(seq 2 $1 | paste -s -d, /dev/stdin) 0
 
 # Clean up cpusets
-PerfUtils/scripts/ReleaseCores.sh
+PerfUtils/scripts/ReleaseCores.sh > /dev/null
