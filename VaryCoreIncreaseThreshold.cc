@@ -96,10 +96,12 @@ void dispatch() {
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
+            // Keep trying to create this thread until we succeed.
+            while (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread);
+
+            // Compute the next cycle time only after we win successfully
             nextCycleTime = currentTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
-            if (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread)
-                failures++;
         }
 
         if (nextIntervalTime < currentTime) {
@@ -225,7 +227,7 @@ int main(int argc, const char** argv) {
     fclose(specFile);
 
     puts("Core Increase Threshold,Core Utilization,Median Latency,99\% Latency,Throughput");
-    for (double threshold = 0.0; threshold <= 1.0; threshold+=0.01) {
+    for (double threshold = 0.01; threshold <= 1.0; threshold+=0.01) {
         // TODO: Vary both the ramp-up and ramp-down factor; otherwise any
         // overly sensitive increase in core count will be rapidly countered by
         // a corresponding decrease.
@@ -255,8 +257,19 @@ int main(int argc, const char** argv) {
         // Note that this is completed tasks per second, where each task is currently 2 us
         uint64_t throughput = static_cast<uint64_t>(
                 static_cast<double>(indices[indices.size() - 1]) / durationOfInterval);
+
+        // Compute load factor.
+        uint64_t weightedLoadedCycles = last.weightedLoadedCycles - last.weightedLoadedCycles;
+        double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
+
+        // Compute core count changes
+        uint64_t numIncrements = last.numCoreIncrements - last.numCoreIncrements;
+        uint64_t numDecrements = last.numCoreDecrements - last.numCoreDecrements;
+
         Statistics mathStats = computeStatistics(latencies, indices[indices.size()-1]);
-        printf("%lf,%lf,%lu,%lu,%lu\n", threshold, utilization, mathStats.median, mathStats.P99,throughput);
+        printf("%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu\n", threshold, utilization,
+                mathStats.median, mathStats.P99,throughput, loadFactor,
+                numIncrements, numDecrements);
 
         indices.clear();
         perfStats.clear();
