@@ -253,7 +253,7 @@ int main(int argc, const char** argv) {
         latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--");
+    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--,U x LF,(1-idleCores) x LF");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
@@ -270,6 +270,11 @@ int main(int argc, const char** argv) {
         uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
         double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
 
+        // Subtract the exclusive dispatch core.
+        uint64_t numSharedCores = perfStats[i].numCoreIncrements - perfStats[i].numCoreDecrements - 1;
+        double idleCoreFraction = static_cast<double>(idleCycles) / static_cast<double>(totalCycles);
+        double totalIdleCores = idleCoreFraction * static_cast<double>(numSharedCores);
+
         // Compute core count changes
         uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
         uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
@@ -277,10 +282,11 @@ int main(int argc, const char** argv) {
         // Median and 99% Latency
         // Note that this computation will modify data
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
-        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu\n", durationOfInterval,
+        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu,%lf,%lf\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization,
                 mathStats.median, mathStats.P99,throughput,
-                loadFactor, numIncrements, numDecrements);
+                loadFactor, numIncrements, numDecrements,
+                utilization * loadFactor, (1-totalIdleCores)*loadFactor);
     }
 
     // Output times at which cores changed, relative to the start time.
