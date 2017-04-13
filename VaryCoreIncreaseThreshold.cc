@@ -15,6 +15,7 @@ using Arachne::PerfStats;
 namespace Arachne{
 extern bool disableLoadEstimation;
 extern double maxIdleCoreFraction;
+extern double loadFactorThreshold;
 }
 
 using PerfUtils::TimeTrace;
@@ -227,12 +228,12 @@ int main(int argc, const char** argv) {
     fclose(specFile);
 
     puts("Core Increase Threshold,Core Utilization,Median Latency,99\% Latency,Throughput");
-    for (double threshold = 0.01; threshold <= 1.0; threshold+=0.01) {
+    for (double threshold = 0.0; threshold <= 10.0; threshold+=0.1) {
         // TODO: Vary both the ramp-up and ramp-down factor; otherwise any
         // overly sensitive increase in core count will be rapidly countered by
         // a corresponding decrease.
         // TODO: Discuss with John the policy issues.
-        Arachne::maxIdleCoreFraction = threshold;
+        Arachne::loadFactorThreshold = threshold;
         Arachne::createThread(dispatch);
         Arachne::waitForTermination();
 
@@ -259,12 +260,12 @@ int main(int argc, const char** argv) {
                 static_cast<double>(indices[indices.size() - 1]) / durationOfInterval);
 
         // Compute load factor.
-        uint64_t weightedLoadedCycles = last.weightedLoadedCycles - last.weightedLoadedCycles;
+        uint64_t weightedLoadedCycles = last.weightedLoadedCycles - first.weightedLoadedCycles;
         double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
 
         // Compute core count changes
-        uint64_t numIncrements = last.numCoreIncrements - last.numCoreIncrements;
-        uint64_t numDecrements = last.numCoreDecrements - last.numCoreDecrements;
+        uint64_t numIncrements = last.numCoreIncrements - first.numCoreIncrements;
+        uint64_t numDecrements = last.numCoreDecrements - first.numCoreDecrements;
 
         Statistics mathStats = computeStatistics(latencies, indices[indices.size()-1]);
         printf("%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu\n", threshold, utilization,
