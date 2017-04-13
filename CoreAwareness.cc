@@ -76,6 +76,10 @@ void findMyTid() {
    tids.push_back(gettid());
 }
 
+void printMyCore() {
+   printf("Thread %d is on core %d\n", gettid(), sched_getcpu());
+}
+
 void createCpuset(std::string dirName, const char* cores)
 {
     if (mkdir(dirName.c_str(),
@@ -183,8 +187,18 @@ void dispatch() {
     moveThreadsToCpuset({gettid()}, dispatchCpusetPath);
     moveThreadsToCpuset(tids, applicationCpusetPath);
 
+    // printf("Before sleep:\n");
+    // for (unsigned int i = 1; i < Arachne::numActiveCores; i++) {
+    //     Arachne::join(Arachne::createThreadOnCore(i, printMyCore));
+    // }
+
     // Give the kernel time to settle core assignments
-    sleep(3);
+    usleep(100000);
+
+    // printf("After sleep:\n");
+    // for (unsigned int i = 1; i < Arachne::numActiveCores; i++) {
+    //     Arachne::join(Arachne::createThreadOnCore(i, printMyCore));
+    // }
 
     // Page in our data store
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
