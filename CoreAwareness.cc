@@ -183,6 +183,9 @@ void dispatch() {
     moveThreadsToCpuset({gettid()}, dispatchCpusetPath);
     moveThreadsToCpuset(tids, applicationCpusetPath);
 
+    // Give the kernel time to settle core assignments
+    sleep(3);
+
     // Page in our data store
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
