@@ -15,6 +15,7 @@ using Arachne::PerfStats;
 namespace Arachne{
 extern bool disableLoadEstimation;
 extern double maxIdleCoreFraction;
+extern double loadFactorThreshold;
 }
 
 using PerfUtils::TimeTrace;
@@ -222,9 +223,9 @@ int main(int argc, const char** argv) {
     }
     fclose(specFile);
 
-    // Second argument specifies the parameter d
     if (argc > 2) {
         Arachne::maxIdleCoreFraction = atof(argv[2]);
+        Arachne::loadFactorThreshold =  atof(argv[2]);
     }
 
     // Catch intermittent errors
@@ -253,7 +254,7 @@ int main(int argc, const char** argv) {
         latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--,U x LF,(1-idleCores) x LF");
+    puts("Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--,U x LF,(1-idle) x LF");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
