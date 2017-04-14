@@ -8,6 +8,7 @@ CORE_RANGE="4"
 KERNEL_THREAD_RANGE="1 2 3 4 5 6 7 8"
 
 echo Cores,Kernel Threads,Duration,Offered Load,Core Utilization,Median Latency,99\% Latency,Throughput,Load Factor,Core++,Core--
+# echo Cores,Kernel Threads,Min,10\%,20\%,30\%,40\%,Median,60\%,70\%,80\%,90\%,99\%,Max
 for i in $CORE_RANGE; do
   for j in $KERNEL_THREAD_RANGE; do
     echo -n $i,$j,

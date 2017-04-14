@@ -422,8 +422,12 @@ int main(int argc, const char** argv) {
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
         printf("%lf,%lf,%lf,%lu,%lu,%lu,%lf,%lu,%lu\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization,
-                mathStats.median, mathStats.P99,throughput,
+                mathStats.median, mathStats.P99, throughput,
                 loadFactor, numIncrements, numDecrements);
+        // printf("%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
+        //        mathStats.min, mathStats.P10, mathStats.P20, mathStats.P30,
+        //        mathStats.P40, mathStats.median, mathStats.P60, mathStats.P70,
+        //        mathStats.P80, mathStats.P90, mathStats.P99, mathStats.max);
     }
 
     // Output times at which cores changed, relative to the start time.
