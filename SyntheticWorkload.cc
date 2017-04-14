@@ -21,9 +21,9 @@ extern double loadFactorThreshold;
 using PerfUtils::TimeTrace;
 
 // Support a maximum of 100 million entries.
-#define MAX_ENTRIES (1 << 27)
+#define MAX_ENTRIES (1L << 33)
 
-uint64_t latencies[MAX_ENTRIES];
+uint64_t *latencies;
 
 std::atomic<uint64_t> arrayIndex;
 
@@ -60,6 +60,7 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
 
 void dispatch() {
     // Page in our data store
+    latencies = new uint64_t[MAX_ENTRIES];
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
     // Prevent scheduling onto this core, since threads scheduled to this core
@@ -291,6 +292,7 @@ int main(int argc, const char** argv) {
                 throughput, loadFactor, numIncrements, numDecrements,
                 utilization * loadFactor, (1-totalIdleCores)*loadFactor);
     }
+    delete[] latencies;
 
     // Output times at which cores changed, relative to the start time.
 }
