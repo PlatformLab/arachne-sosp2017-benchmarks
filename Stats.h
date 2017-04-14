@@ -5,6 +5,7 @@ struct Statistics {
     uint64_t average;
     uint64_t min;
     uint64_t median;
+    uint64_t P90;
     uint64_t P99;
     uint64_t P999;
     uint64_t P9999;
@@ -26,6 +27,7 @@ Statistics computeStatistics(uint64_t* rawdata, size_t count) {
     stats.average  = sum / count;
     stats.min    = rawdata[0];
     stats.median = rawdata[count / 2];
+    stats.P90    = rawdata[(int)(static_cast<double>(count)*0.9)];
     stats.P99    = rawdata[(int)(static_cast<double>(count)*0.99)];
     stats.P999   = rawdata[(int)(static_cast<double>(count)*0.999)];
     stats.P9999  = rawdata[(int)(static_cast<double>(count)*0.9999)];
