@@ -14,7 +14,9 @@ fi
 PerfUtils/scripts/ReleaseCores.sh > /dev/null
 
 # Vary cores and kernel threads
-./CoreAwareness --minNumCores $2 --maxNumCores $2  FixedLoad_85P_4Core.bench 1 $(seq 2 $1 | paste -s -d, /dev/stdin) 0
+NUM_CORES=$1
+NUM_KERNEL_THREADS=$2
+./CoreAwareness --minNumCores $((NUM_KERNEL_THREADS+1)) --maxNumCores $((NUM_KERNEL_THREADS+1))  FixedLoad_85P_4Core.bench 1 $(seq 2 $((NUM_CORES+1)) | paste -s -d, /dev/stdin) 0
 
 # Clean up cpusets
 PerfUtils/scripts/ReleaseCores.sh > /dev/null
