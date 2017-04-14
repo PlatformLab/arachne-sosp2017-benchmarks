@@ -97,10 +97,10 @@ void dispatch() {
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             // Keep trying to create this thread until we succeed.
-            while (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread);
+            while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime) == Arachne::NullThread);
 
-            // Compute the next cycle time only after we win successfully
-            nextCycleTime = currentTime +
+            // Compute the next cycle time independently of when the current time is.
+            nextCycleTime = nextCycleTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
         }
 
@@ -125,6 +125,8 @@ void dispatch() {
             intervalGenerator.param(
                     std::exponential_distribution<double>::param_type(
                     intervals[currentInterval].creationsPerSecond));
+            nextCycleTime = Cycles::rdtsc() +
+                Cycles::fromSeconds(intervalGenerator(gen));
             TimeTrace::record("Load Change END %u --> %u Creations Per Second.",
                     static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
                     static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
