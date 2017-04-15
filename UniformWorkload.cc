@@ -63,9 +63,9 @@ void fixedWork(int threadId, uint64_t duration, uint64_t creationTime) {
     uint64_t stop = Cycles::rdtsc() + duration;
     while (Cycles::rdtsc() < stop);
 
-    // Create a child thread.
-    if (Arachne::createThread(fixedWork, threadId, duration, stop) == Arachne::NullThread)
-        TimeTrace::record("Thread Id %d failed to give birth.", threadId);
+    // Create a child thread. May have to retry because thread creation during
+    // scale-down can cause a failure.
+    while (Arachne::createThread(fixedWork, threadId, duration, stop) == Arachne::NullThread);
 
     // Compute latency
     uint64_t latency = Cycles::rdtsc() - creationTime;
