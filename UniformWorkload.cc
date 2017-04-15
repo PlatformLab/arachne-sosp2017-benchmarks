@@ -55,14 +55,17 @@ std::atomic<int> curNumThreads;
   * Spin for duration cycles, and then compute latency from creation time.
   */
 void fixedWork(int threadId, uint64_t duration, uint64_t creationTime) {
-    if (threadId >= curNumThreads)
+    if (threadId >= curNumThreads) {
+        TimeTrace::record("Thread Id %d dropping off", threadId);
         return;
+    }
     // Do some fixed amount of work.
     uint64_t stop = Cycles::rdtsc() + duration;
     while (Cycles::rdtsc() < stop);
 
     // Create a child thread.
-    Arachne::createThread(fixedWork, threadId, duration, stop);
+    if (Arachne::createThread(fixedWork, threadId, duration, stop) == Arachne::NullThread)
+        TimeTrace::record("Thread Id %d failed to give birth.", threadId);
 
     // Compute latency
     uint64_t latency = Cycles::rdtsc() - creationTime;
@@ -96,8 +99,10 @@ void dispatch() {
 
     // Initialize the threads here.
     curNumThreads = numCoresOfLoad;
-    for (int i = 0; i < numCoresOfLoad; i++)
+    for (int i = 0; i < numCoresOfLoad; i++) {
+        TimeTrace::record("Creating thread with Id = %d\n", i);
         Arachne::createThread(fixedWork, i, cyclesPerThread, Cycles::rdtsc());
+    }
 
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
@@ -129,6 +134,7 @@ void dispatch() {
                 int formerCores = curNumThreads;
                 curNumThreads = numCoresOfLoad;
                 for (int i = 0; i < numCoresOfLoad - formerCores; i++) {
+                    TimeTrace::record("Creating thread with Id = %d\n", i + formerCores);
                     Arachne::createThread(fixedWork, i + formerCores,
                             cyclesPerThread, currentTime);
                 }

@@ -28,6 +28,8 @@ int compare(const void * a, const void * b)
 
 Statistics computeStatistics(uint64_t* rawdata, size_t count) {
     Statistics stats;
+    if (count == 0)
+        return stats;
     qsort(rawdata, count, sizeof(uint64_t), compare);
     uint64_t sum = 0;
     for (size_t i = 0; i < count; i++)
