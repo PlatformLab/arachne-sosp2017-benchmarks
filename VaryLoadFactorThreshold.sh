@@ -7,8 +7,9 @@
 #done
 #
 # Scaling up and down
-for i in $( seq 1.0 0.25 4.0 ); do
+for i in $( seq 1.0 0.25 10.0 ); do
     p=$(printf %.0f $( echo "$i*100" | bc ));
     echo $p;
-    ./SyntheticWorkload --maxNumCores 15 LoadTracking_20K_Monster.bench $i 2> rcmonster/Monster_20K_LoadFactor$p.log > rcmonster/Monster_20K_LoadFactor$p.csv ;
+    ./SyntheticWorkload --maxNumCores 15 --arraySize 33 --scalingThreshold $i --distribution uniform  LoadTracking_20K_Monster.bench \
+        2> rcmonster/Monster_Uniform_LoadFactor$p.log > rcmonster/Monster_Uniform_LoadFactor$p.csv ;
 done
