@@ -16,6 +16,7 @@ namespace Arachne{
 extern bool disableLoadEstimation;
 extern double maxIdleCoreFraction;
 extern double loadFactorThreshold;
+extern double maxUtilization;
 }
 
 using PerfUtils::TimeTrace;
@@ -291,6 +292,7 @@ parseOptions(int* argcp, const char** argv) {
             case 's':
                 Arachne::maxIdleCoreFraction = atof(optionArgument);
                 Arachne::loadFactorThreshold =  atof(optionArgument);
+                Arachne::maxUtilization = atof(optionArgument);
                 break;
             case UNRECOGNIZED:
                 fprintf(stderr, "Unrecognized option %s given.", optionName);
