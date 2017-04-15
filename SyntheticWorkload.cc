@@ -100,9 +100,15 @@ void dispatch() {
             // Keep trying to create this thread until we succeed.
             while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime) == Arachne::NullThread);
 
-            // Compute the next cycle time independently of when the current time is.
             nextCycleTime = nextCycleTime +
                 Cycles::fromSeconds(intervalGenerator(gen));
+            // Clip the nextCycle time to the current time if we're about to go
+            // into instability. This way, we do not keep falling further and
+            // further behind and have latency proportional to the running time
+            // of the experiment but we do create threads as fast as possible
+            // when we are not meeting the threshold.
+            if (nextCycleTime < currentTime)
+                nextCycleTime = currentTime;
         }
 
         if (nextIntervalTime < currentTime) {
