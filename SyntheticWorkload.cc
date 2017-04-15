@@ -20,12 +20,16 @@ extern double loadFactorThreshold;
 
 using PerfUtils::TimeTrace;
 
-// Support a maximum of 100 million entries.
-#define MAX_ENTRIES (1L << 33)
+int ARRAY_EXP = 27;
+size_t MAX_ENTRIES;
 
 uint64_t *latencies;
-
 std::atomic<uint64_t> arrayIndex;
+
+enum DistributionType {
+    POISSON,
+    UNIFORM
+} distType = POISSON;
 
 struct Interval {
     uint64_t timeToRun;
@@ -60,6 +64,7 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
 
 void dispatch() {
     // Page in our data store
+    MAX_ENTRIES = 1L << ARRAY_EXP;
     latencies = new uint64_t[MAX_ENTRIES];
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
@@ -78,8 +83,18 @@ void dispatch() {
 	std::mt19937 gen(rd());
 
     std::exponential_distribution<double> intervalGenerator(intervals[currentInterval].creationsPerSecond);
-    uint64_t nextCycleTime = Cycles::rdtsc() +
-		Cycles::fromSeconds(intervalGenerator(gen));
+    std::uniform_real_distribution<> uniformIG(0, 2.0 / intervals[currentInterval].creationsPerSecond);
+
+    uint64_t nextCycleTime;
+    switch (distType) {
+        case POISSON:
+            nextCycleTime = Cycles::rdtsc() +
+                Cycles::fromSeconds(intervalGenerator(gen));
+            break;
+        case UNIFORM:
+            nextCycleTime = Cycles::rdtsc() +
+                Cycles::fromSeconds(uniformIG(gen));
+    }
 
 
     PerfStats stats;
@@ -100,8 +115,16 @@ void dispatch() {
             // Keep trying to create this thread until we succeed.
             while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime) == Arachne::NullThread);
 
-            nextCycleTime = nextCycleTime +
-                Cycles::fromSeconds(intervalGenerator(gen));
+            switch(distType) {
+                case POISSON:
+                    nextCycleTime = nextCycleTime +
+                        Cycles::fromSeconds(intervalGenerator(gen));
+                    break;
+               case UNIFORM:
+                    nextCycleTime = nextCycleTime +
+                        Cycles::fromSeconds(uniformIG(gen));
+
+            }
             // Clip the nextCycle time to the current time if we're about to go
             // into instability. This way, we do not keep falling further and
             // further behind and have latency proportional to the running time
@@ -129,11 +152,21 @@ void dispatch() {
             cyclesPerThread =
                 Cycles::fromNanoseconds(
                         intervals[currentInterval].durationPerThread);
-            intervalGenerator.param(
-                    std::exponential_distribution<double>::param_type(
-                    intervals[currentInterval].creationsPerSecond));
-            nextCycleTime = Cycles::rdtsc() +
-                Cycles::fromSeconds(intervalGenerator(gen));
+            switch(distType) {
+              case POISSON:
+                intervalGenerator.param(
+                        std::exponential_distribution<double>::param_type(
+                            intervals[currentInterval].creationsPerSecond));
+                nextCycleTime = Cycles::rdtsc() +
+                    Cycles::fromSeconds(intervalGenerator(gen));
+                break;
+              case UNIFORM:
+                uniformIG.param(
+                        std::uniform_real_distribution<double>::param_type(
+                            0, 2.0 / intervals[currentInterval].creationsPerSecond));
+                nextCycleTime = Cycles::rdtsc() +
+                    Cycles::fromSeconds(uniformIG(gen));
+            }
             TimeTrace::record("Load Change END %u --> %u Creations Per Second.",
                     static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
                     static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
@@ -183,6 +216,92 @@ installSignalHandler() {
 }
 
 /**
+  * This function currently supports only long options.
+  */
+void
+parseOptions(int* argcp, const char** argv) {
+    if (argcp == NULL) return;
+
+    int argc = *argcp;
+
+    struct OptionSpecifier {
+        // The string that the user uses after `--`.
+        const char* optionName;
+        // The id for the option that is returned when it is recognized.
+        int id;
+        // Does the option take an argument?
+        bool takesArgument;
+    } optionSpecifiers[] = {
+        {"arraySize", 'a', true},
+        {"distribution", 'd', true},
+        {"scalingThreshold", 's', true}
+    };
+    const int UNRECOGNIZED = ~0;
+
+    int i = 1;
+    while (i < argc) {
+        if (argv[i][0] != '-' || argv[i][1] != '-') {
+            i++;
+            continue;
+        }
+        const char* optionName = argv[i] + 2;
+        int optionId = UNRECOGNIZED;
+        const char* optionArgument = NULL;
+
+        for (size_t k = 0;
+                k < sizeof(optionSpecifiers) / sizeof(OptionSpecifier); k++) {
+            const char* candidateName = optionSpecifiers[k].optionName;
+            bool needsArg = optionSpecifiers[k].takesArgument;
+            if (strncmp(candidateName,
+                        optionName, strlen(candidateName)) == 0) {
+                if (needsArg) {
+                    if (i + 1 >= argc) {
+                        fprintf(stderr,
+                                "Missing argument to option %s!\n",
+                                candidateName);
+                        break;
+                    }
+                    optionArgument = argv[i+1];
+                    optionId = optionSpecifiers[k].id;
+                    argc -= 2;
+                    memmove(argv + i, argv + i + 2, (argc - i) * sizeof(char*));
+                } else {
+                    optionId = optionSpecifiers[k].id;
+                    argc -= 1;
+                    memmove(argv + i, argv + i + 1, (argc - i) * sizeof(char*));
+                }
+                break;
+            }
+        }
+        switch (optionId) {
+            case 'a':
+                ARRAY_EXP = atoi(optionArgument);
+                break;
+            case 'd':
+                if (optionArgument[0] == 'p')
+                    distType = POISSON;
+                else if (optionArgument[0] == 'u')
+                    distType = UNIFORM;
+                else {
+                    fprintf(stderr, "Unrecognized distribution option %s!\n",
+                            optionArgument);
+                    abort();
+                }
+                break;
+            case 's':
+                Arachne::maxIdleCoreFraction = atof(optionArgument);
+                Arachne::loadFactorThreshold =  atof(optionArgument);
+                break;
+            case UNRECOGNIZED:
+                fprintf(stderr, "Unrecognized option %s given.", optionName);
+                abort();
+        }
+    }
+    *argcp = argc;
+}
+
+
+/**
  * This synthetic benchmarking tool allows us to create threads at a Poisson
  * arrival rate with a configurable mean. These threads run for a configurable
  * amount of time. We record the times that configuration changes go into
@@ -201,15 +320,20 @@ int main(int argc, const char** argv) {
     CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
     Arachne::Logger::setLogLevel(Arachne::DEBUG);
 
-    if (argc < 2) {
-        printf("Please specify a configuration file!\n");
-        exit(1);
-    }
-
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
     Arachne::init(&argc, argv);
+
+    // Parse options such as the size of array in powers of 2, and what kind of
+    // distribution to use, and the value of the threshold parameter to pass to
+    // Arachne.
+    parseOptions(&argc, argv);
+
+    if (argc < 2) {
+        printf("Please specify a configuration file!\n");
+        exit(1);
+    }
 
     // First argument specifies a configuration file with the following format
     // <count_of_rows>
@@ -231,11 +355,6 @@ int main(int argc, const char** argv) {
                 &intervals[i].durationPerThread);
     }
     fclose(specFile);
-
-    if (argc > 2) {
-        Arachne::maxIdleCoreFraction = atof(argv[2]);
-        Arachne::loadFactorThreshold =  atof(argv[2]);
-    }
 
     // Catch intermittent errors
     installSignalHandler();
