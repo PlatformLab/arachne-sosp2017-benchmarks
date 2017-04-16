@@ -49,6 +49,8 @@ size_t numIntervals;
 // are not read atomically, but we believe the difference should be
 // negligible.
 std::vector<uint64_t> indices;
+std::vector<uint64_t> numTimesLoadClipped;
+
 // The performance statistics before each change in load, which we can use
 // later to compute utilization.
 std::vector<PerfStats> perfStats;
@@ -100,8 +102,10 @@ void dispatch() {
 
     PerfStats stats;
     PerfStats::collectStats(&stats);
+    uint64_t loadClipCount = 0;
 
     indices.push_back(arrayIndex);
+    numTimesLoadClipped.push_back(loadClipCount);
     perfStats.push_back(stats);
 
     uint64_t currentTime = Cycles::rdtsc();
@@ -131,14 +135,17 @@ void dispatch() {
             // further behind and have latency proportional to the running time
             // of the experiment but we do create threads as fast as possible
             // when we are not meeting the threshold.
-            if (nextCycleTime < currentTime)
+            if (nextCycleTime < currentTime) {
                 nextCycleTime = currentTime;
+                loadClipCount++;
+            }
         }
 
         if (nextIntervalTime < currentTime) {
             // Collect latency, throughput, and core utilization information from the past interval
             PerfStats::collectStats(&stats);
             indices.push_back(arrayIndex);
+            numTimesLoadClipped.push_back(loadClipCount);
             perfStats.push_back(stats);
 
             // Advance the interval
@@ -384,7 +391,7 @@ int main(int argc, const char** argv) {
         latencies[i] = Cycles::toNanoseconds(latencies[i]);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,U x LF,(1-idle) x LF");
+    puts("Duration,Offered Load,Core Utilization,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
@@ -410,13 +417,16 @@ int main(int argc, const char** argv) {
         uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
         uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
 
+        // Compute clipping.
+        uint64_t loadClipCount = numTimesLoadClipped[i] - numTimesLoadClipped[i-1];
+
         // Median and 99% Latency
         // Note that this computation will modify data
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
-        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lf,%lf\n", durationOfInterval,
+        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lf,%lf\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization,
                 mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
-                throughput, loadFactor, numIncrements, numDecrements,
+                throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
                 utilization * loadFactor, (1-totalIdleCores)*loadFactor);
     }
     delete[] latencies;
