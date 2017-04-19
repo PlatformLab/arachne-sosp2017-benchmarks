@@ -10,6 +10,7 @@ CoreAwareness
 CoreRequest_Contended_Latency
 CoreRequest_Contended_Timeout_Latency
 CoreRequest_Noncontended_Latency
+UniformWorkload
 
 # Log files and text files
 *.txt
@@ -20,6 +21,8 @@ CoreRequest_Noncontended_Latency
 
 # Data belongs in the main paper repository
 data/
+data2/
+rcmonster/
 
 # Misc files
 tags

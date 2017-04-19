@@ -362,6 +362,13 @@ int main(int argc, const char** argv) {
                 &intervals[i].timeToRun,
                 &intervals[i].creationsPerSecond,
                 &intervals[i].durationPerThread);
+        // Adjust the offered load down to match the maximum Poisson load achieved.
+        if (distType == UNIFORM)
+            // For 70% utilization threshold and load factor 225
+            // intervals[i].creationsPerSecond *= 0.87;
+            // For 85% utilization threshold, the maximum throughput ratio for
+            // poisson is this much.
+            intervals[i].creationsPerSecond *= 0.9327956;
     }
     fclose(specFile);
 
