@@ -1,31 +1,15 @@
 #include <stdlib.h>
 #include <atomic>
 #include "Cycles.h"
+#include "TimeTrace.h"
 #include "Arachne.h"
 
 #define CORE_OCCUPANCY 3
 
 using PerfUtils::Cycles;
+using PerfUtils::TimeTrace;
 
-// These should be thread-local structures
-struct TLSCounter {
-    static std::atomic<uint64_t> globalCount;
-
-	// Private to each structure
-	uint64_t privateCount;
-
- 	TLSCounter() : privateCount(0){ }
-	~TLSCounter() {
-		globalCount += privateCount;
-	}
-	void increment() {
-		privateCount++;
-	}
-};
-
-thread_local TLSCounter tlsCounter;
-
-std::atomic<uint64_t> TLSCounter::globalCount;
+std::atomic<uint64_t> globalCount;
 
 // Both of these times are in cycles
 std::atomic<uint64_t> stopTime;
@@ -36,28 +20,43 @@ std::atomic<double> duration;
 
 Arachne::Semaphore done;
 
-void creator() {
+void creator(int id, uint64_t counter) {
+    // TODO: timetrace this function
+    // TimeTrace::record("Starting creator: %d on %d", id, Arachne::kernelThreadId);
     if (Cycles::rdtsc() < stopTime) {
-        if (Arachne::createThread(creator) == Arachne::NullThread) {
-			abort();
+        // TimeTrace::record("Before createThread: %d on %d", id, Arachne::kernelThreadId);
+        if (Arachne::createThread(creator, id, counter + 1) == Arachne::NullThread) {
+            abort();
         }
-        tlsCounter.increment();
+        // TimeTrace::record("After createThread success: %d on %d", id, Arachne::kernelThreadId);
     } else {
+        globalCount += counter;
         done.notify();
     }
 }
 
 void timeKeeper(int numCores, int seconds) {
-	startTime = Cycles::rdtsc();
+    startTime = Cycles::rdtsc();
     uint64_t durationInCycles = Cycles::fromSeconds(seconds);
     stopTime = Cycles::rdtsc() + durationInCycles;
-	for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
-		Arachne::createThread(creator);
+    for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
+        Arachne::createThread(creator, i, 1);
     // Wait for all threads to finish, using a semaphor
-	for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
+    for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
         done.wait();
-	duration = Cycles::toSeconds(Cycles::rdtsc() - startTime);
-	Arachne::shutDown();
+    duration = Cycles::toSeconds(Cycles::rdtsc() - startTime);
+
+    std::string outputFilename = "ThreadCreationScalability" + std::to_string(numCores) + ".log";
+    // TimeTrace::setOutputFileName(outputFilename.c_str());
+    // TimeTrace::print();
+    Arachne::PerfStats stats;
+    Arachne::PerfStats::collectStats(&stats);
+    // number of failed creations normalized by number of cores
+    uint64_t failures = stats.numTimesContended;
+    printf("Number of failed creations on %d cores = %lu, number of successes = %lu, (%lu normalized, fail/success = %f)\n",
+           numCores, failures, globalCount.load(), failures/numCores, (double)failures/(double)globalCount.load());
+
+    Arachne::shutDown();
 }
 
 /**
@@ -77,7 +76,7 @@ int main(int argc, const char** argv) {
 
     Arachne::createThread(timeKeeper, numCores, numSeconds);
     Arachne::waitForTermination();
-    printf("%d,%d,%lu\n", numSeconds, numCores, static_cast<uint64_t>(
-                static_cast<double>(TLSCounter::globalCount.load()) / duration));
+    // printf("%d,%d,%lu\n", numSeconds, numCores, static_cast<uint64_t>(
+    //             static_cast<double>(globalCount.load()) / duration));
     return 0;
 }
