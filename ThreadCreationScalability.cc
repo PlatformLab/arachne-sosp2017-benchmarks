@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <atomic>
-#include "Cycles.h"
-#include "TimeTrace.h"
+#include "PerfUtils/Cycles.h"
+#include "PerfUtils/TimeTrace.h"
 #include "Arachne.h"
 
 #define CORE_OCCUPANCY 3
@@ -52,9 +52,9 @@ void timeKeeper(int numCores, int seconds) {
     Arachne::PerfStats stats;
     Arachne::PerfStats::collectStats(&stats);
     // number of failed creations normalized by number of cores
-    uint64_t failures = stats.numTimesContended;
-    printf("Number of failed creations on %d cores = %lu, number of successes = %lu, (%lu normalized, fail/success = %f)\n",
-           numCores, failures, globalCount.load(), failures/numCores, (double)failures/(double)globalCount.load());
+//    uint64_t failures = stats.numTimesContended;
+//    printf("Number of failed creations on %d cores = %lu, number of successes = %lu, (%lu normalized, fail/success = %f)\n",
+//           numCores, failures, globalCount.load(), failures/numCores, (double)failures/(double)globalCount.load());
 
     Arachne::shutDown();
 }

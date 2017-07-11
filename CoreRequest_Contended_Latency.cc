@@ -2,11 +2,11 @@
 #include <thread>
 #include <atomic>
 
-#include "CoreArbiterClient.h"
-#include "Logger.h"
-#include "Cycles.h"
-#include "TimeTrace.h"
-#include "Util.h"
+#include "CoreArbiter/CoreArbiterClient.h"
+#include "CoreArbiter/Logger.h"
+#include "PerfUtils/Cycles.h"
+#include "PerfUtils/TimeTrace.h"
+#include "PerfUtils/Util.h"
 #include "Stats.h"
 
 using PerfUtils::TimeTrace;
