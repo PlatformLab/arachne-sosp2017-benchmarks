@@ -31,7 +31,7 @@ void coreExec(CoreArbiterClient& client) {
 void coreRequest(CoreArbiterClient& client) {
     std::vector<uint32_t> oneCoreRequest = {1,0,0,0,0,0,0,0};
 
-    client.setNumCores(oneCoreRequest);
+    client.setRequestedCores(oneCoreRequest);
     client.blockUntilCoreAvailable();
 
     std::vector<uint32_t> twoCoresRequest = {2,0,0,0,0,0,0,0};
@@ -39,12 +39,12 @@ void coreRequest(CoreArbiterClient& client) {
         // When the number of blocked threads becomes nonzero, we request a core.
         while (client.getNumBlockedThreads() == 0);
         TimeTrace::record("Detected thread block");
-        client.setNumCores(twoCoresRequest);
+        client.setRequestedCores(twoCoresRequest);
         TimeTrace::record("Requested a core");
         // When the number of blocked threads becomes zero, we release a core.
         while (client.getNumBlockedThreads() == 1);
         TimeTrace::record("Detected thread wakeup");
-        client.setNumCores(oneCoreRequest);
+        client.setRequestedCores(oneCoreRequest);
         TimeTrace::record("Released a core");
     }
 }

@@ -24,13 +24,13 @@ void highPriorityRequest(CoreArbiterClient& client) {
     for (int i = 0; i < NUM_TRIALS; i++) {
         // printf("*** %d ***\n", i);
         TimeTrace::record("About to request fewer cores");
-        client.setNumCores({1,0,0,0,0,0,0,0});
+        client.setRequestedCores({1,0,0,0,0,0,0,0});
         TimeTrace::record("Requested fewer cores");
         while (client.getNumBlockedThreadsFromServer() == 0);
         TimeTrace::record("High priority thread blocked.");
         while(client.getNumUnoccupiedCores() > 0);
         TimeTrace::record("About to request more cores");
-        client.setNumCores({2,0,0,0,0,0,0,0});
+        client.setRequestedCores({2,0,0,0,0,0,0,0});
         TimeTrace::record("Requested more cores");
         while(client.getNumBlockedThreads() == 1);
     }
@@ -56,7 +56,7 @@ void highPriorityBlock(CoreArbiterClient& client) {
 
 void lowPriorityExec(CoreArbiterClient& client) {
     std::vector<uint32_t> lowPriorityRequest = {0,0,0,0,0,0,0,1};
-    client.setNumCores(lowPriorityRequest);
+    client.setRequestedCores(lowPriorityRequest);
     client.blockUntilCoreAvailable();
 
     while (client.getNumProcessesOnServer() == 1);
@@ -75,7 +75,7 @@ int main(){
 
         // Wait for the low priority thread to be put on a core
         while (client.getNumUnoccupiedCores() == 2);
-        client.setNumCores({2,0,0,0,0,0,0,0});
+        client.setRequestedCores({2,0,0,0,0,0,0,0});
 
         std::thread highPriorityThread1(highPriorityBlock, std::ref(client));
         std::thread highPriorityThread2(highPriorityRequest, std::ref(client));
