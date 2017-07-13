@@ -1,4 +1,5 @@
 #include <math.h>
+#include "mkdir_p.h"
 
 struct Statistics {
     size_t count;
@@ -70,6 +71,7 @@ void printStatistics(const char* label, uint64_t* rawdata, size_t count,
     if (datadir != NULL) {
         char buf[1024];
         sprintf(buf, "%s/%s", datadir, label);
+        ensureParents(buf);
         FILE* fp = fopen(buf, "w");
         for (size_t i = 0; i < count; i++)
             fprintf(fp, "%lu\n", rawdata[i]);
