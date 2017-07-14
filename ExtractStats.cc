@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <array>
-#include "Stats.h"
+#include "PerfUtils/Stats.h"
 
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;

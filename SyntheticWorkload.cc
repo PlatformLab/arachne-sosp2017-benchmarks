@@ -6,7 +6,7 @@
 #include "Arachne.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
-#include "Stats.h"
+#include "PerfUtils/Stats.h"
 #include "CoreArbiter/Logger.h"
 
 using PerfUtils::Cycles;
