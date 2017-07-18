@@ -4,7 +4,7 @@ COREARBITER=../CoreArbiter
 
 
 LIBS=-I$(ARACHNE)/include -I$(COREARBITER)/include  -L$(ARACHNE)/lib -lArachne  -L$(COREARBITER)/lib \
-	-lCoreArbiter -I$(PERFUTILS)/include $(PERFUTILS)/lib/libPerfUtils.a -pthread
+	-lCoreArbiter -I$(PERFUTILS)/include $(PERFUTILS)/lib/libPerfUtils.a -lpcrecpp -pthread
 
 CXXFLAGS=-g -std=c++11 -O3 -Wall -Werror -Wformat=2 -Wextra -Wwrite-strings -Wno-unused-parameter -Wmissing-format-attribute -Wno-non-template-friend -Woverloaded-virtual -Wcast-qual -Wcast-align -Wconversion -fomit-frame-pointer
 
