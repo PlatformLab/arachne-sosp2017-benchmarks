@@ -65,15 +65,82 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
     latencies[arrayIndex++] = latency;
 }
 
-void dispatch() {
+void postProcessResults(const char* benchmarkFile) {
+    // Output TimeTrace for human reading
+    size_t index = rindex(benchmarkFile, static_cast<int>('.')) - benchmarkFile;
+    char outTraceFileName[1024];
+    strncpy(outTraceFileName, benchmarkFile, index);
+    outTraceFileName[index] = '\0';
+    strncat(outTraceFileName, ".log", 4);
+    TimeTrace::setOutputFileName(outTraceFileName);
+    TimeTrace::keepOldEvents = true;
+    TimeTrace::print();
+
+    // Sanity check
+    if (arrayIndex >= MAX_ENTRIES) {
+        puts("Guaranteed memory corruption.");
+        abort();
+    }
+
+    // Convert latencies to ns
+    for (size_t i = 0; i < arrayIndex; i++)
+        latencies[i] = Cycles::toNanoseconds(latencies[i]);
+    // Output core utilization, median & 99% latency, and throughput for each interval in a
+    // plottable format.
+    puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
+    for (size_t i = 1; i < indices.size(); i++) {
+        double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
+            perfStats[i-1].collectionTime);
+        uint64_t idleCycles = perfStats[i].idleCycles - perfStats[i-1].idleCycles;
+        uint64_t totalCycles = perfStats[i].totalCycles - perfStats[i-1].totalCycles;
+        double utilization = static_cast<double>(totalCycles - idleCycles) /
+            static_cast<double>(totalCycles);
+        double coresUsed = static_cast<double>(totalCycles - idleCycles) /
+            static_cast<double>(perfStats[i].collectionTime -
+                    perfStats[i-1].collectionTime);
+
+
+        // Note that this is completed tasks per second, where each task is currently 2 us
+        uint64_t throughput = static_cast<uint64_t>(
+                static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
+
+        // Compute load factor.
+        uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
+        double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
+
+        // Subtract the exclusive dispatch core.
+        uint64_t numSharedCores = perfStats[i].numCoreIncrements - perfStats[i].numCoreDecrements - 1;
+        double idleCoreFraction = static_cast<double>(idleCycles) / static_cast<double>(totalCycles);
+        double totalIdleCores = idleCoreFraction * static_cast<double>(numSharedCores);
+
+        // Compute core count changes
+        uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
+        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
+
+        // Compute clipping.
+        uint64_t loadClipCount = numTimesLoadClipped[i] - numTimesLoadClipped[i-1];
+
+        // Median and 99% Latency
+        // Note that this computation will modify data
+        Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
+        printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lf,%lf\n", durationOfInterval,
+                intervals[i-1].creationsPerSecond, utilization, coresUsed,
+                mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
+                throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
+                utilization * loadFactor, (1-totalIdleCores)*loadFactor);
+    }
+    delete[] latencies;
+
+}
+void dispatch(const char* benchmarkFile) {
+    // Prevent scheduling onto this core, since threads scheduled to this core
+    // will never get a chance to run.
+	Arachne::makeExclusiveOnCore();
+
     // Page in our data store
     MAX_ENTRIES = 1L << ARRAY_EXP;
     latencies = new uint64_t[MAX_ENTRIES];
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
-
-    // Prevent scheduling onto this core, since threads scheduled to this core
-    // will never get a chance to run.
-	Arachne::makeExclusiveOnCore();
 
     // Initialize interval
     size_t currentInterval = 0;
@@ -181,7 +248,9 @@ void dispatch() {
 
         }
     }
-    // Shutdown immediately to avoid overcounting.
+    // We can compute statistics and then shut down since we already stored the
+    // last index of the last interval.
+    postProcessResults(benchmarkFile);
     Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
@@ -362,81 +431,18 @@ int main(int argc, const char** argv) {
                 &intervals[i].timeToRun,
                 &intervals[i].creationsPerSecond,
                 &intervals[i].durationPerThread);
-        // Adjust the offered load down to match the maximum Poisson load achieved.
-        if (distType == UNIFORM)
-            // For 70% utilization threshold and load factor 225
-            // intervals[i].creationsPerSecond *= 0.87;
-            // For 85% utilization threshold, the maximum throughput ratio for
-            // poisson is this much.
-            intervals[i].creationsPerSecond *= 0.9327956;
+//        // Adjust the offered load down to match the maximum Poisson load achieved.
+//        if (distType == UNIFORM)
+//            // For 70% utilization threshold and load factor 225
+//            // intervals[i].creationsPerSecond *= 0.87;
+//            // For 85% utilization threshold, the maximum throughput ratio for
+//            // poisson is this much.
+//            intervals[i].creationsPerSecond *= 0.9327956;
     }
     fclose(specFile);
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThread(dispatch);
+    Arachne::createThread(dispatch, argv[1]);
     Arachne::waitForTermination();
-
-    // Output TimeTrace for human reading
-    size_t index = rindex(argv[1], static_cast<int>('.')) - argv[1];
-    char outTraceFileName[1024];
-    strncpy(outTraceFileName, argv[1], index);
-    outTraceFileName[index] = '\0';
-    strncat(outTraceFileName, ".log", 4);
-    TimeTrace::setOutputFileName(outTraceFileName);
-    TimeTrace::keepOldEvents = true;
-    TimeTrace::print();
-
-    // Sanity check
-    if (arrayIndex >= MAX_ENTRIES) {
-        puts("Guaranteed memory corruption.");
-        abort();
-    }
-
-    // Convert latencies to ns
-    for (size_t i = 0; i < arrayIndex; i++)
-        latencies[i] = Cycles::toNanoseconds(latencies[i]);
-    // Output core utilization, median & 99% latency, and throughput for each interval in a
-    // plottable format.
-    puts("Duration,Offered Load,Core Utilization,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
-    for (size_t i = 1; i < indices.size(); i++) {
-        double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
-            perfStats[i-1].collectionTime);
-        uint64_t idleCycles = perfStats[i].idleCycles - perfStats[i-1].idleCycles;
-        uint64_t totalCycles = perfStats[i].totalCycles - perfStats[i-1].totalCycles;
-        double utilization = static_cast<double>(totalCycles - idleCycles) /
-            static_cast<double>(totalCycles);
-
-        // Note that this is completed tasks per second, where each task is currently 2 us
-        uint64_t throughput = static_cast<uint64_t>(
-                static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
-
-        // Compute load factor.
-        uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
-        double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
-
-        // Subtract the exclusive dispatch core.
-        uint64_t numSharedCores = perfStats[i].numCoreIncrements - perfStats[i].numCoreDecrements - 1;
-        double idleCoreFraction = static_cast<double>(idleCycles) / static_cast<double>(totalCycles);
-        double totalIdleCores = idleCoreFraction * static_cast<double>(numSharedCores);
-
-        // Compute core count changes
-        uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
-        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
-
-        // Compute clipping.
-        uint64_t loadClipCount = numTimesLoadClipped[i] - numTimesLoadClipped[i-1];
-
-        // Median and 99% Latency
-        // Note that this computation will modify data
-        Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
-        printf("%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lf,%lf\n", durationOfInterval,
-                intervals[i-1].creationsPerSecond, utilization,
-                mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
-                throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
-                utilization * loadFactor, (1-totalIdleCores)*loadFactor);
-    }
-    delete[] latencies;
-
-    // Output times at which cores changed, relative to the start time.
 }
