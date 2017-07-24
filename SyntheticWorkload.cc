@@ -7,25 +7,36 @@
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
+#include "PerfUtils/Util.h"
 #include "CoreArbiter/Logger.h"
+#include "CoreArbiter/CoreArbiterClient.h"
 
 using PerfUtils::Cycles;
 using Arachne::PerfStats;
+using CoreArbiter::CoreArbiterClient;
 
 namespace Arachne{
 extern bool disableLoadEstimation;
 extern double maxIdleCoreFraction;
 extern double loadFactorThreshold;
 extern double maxUtilization;
+extern std::vector<std::atomic<MaskAndCount> * > occupiedAndCount;
+extern CoreArbiterClient& coreArbiter;
 }
 
 using PerfUtils::TimeTrace;
 
-int ARRAY_EXP = 27;
+int ARRAY_EXP = 26;
 size_t MAX_ENTRIES;
 
+uint64_t *creationTimes;
+uint64_t *startTimes;
+uint64_t *endTimes;
 uint64_t *latencies;
-std::atomic<uint64_t> arrayIndex;
+
+// Fast reconstruction of data
+// ThreadID is implied by array index.
+int *coreIds;
 
 enum DistributionType {
     POISSON,
@@ -58,14 +69,21 @@ std::vector<PerfStats> perfStats;
 /**
   * Spin for duration cycles, and then compute latency from creation time.
   */
-void fixedWork(uint64_t duration, uint64_t creationTime) {
-    uint64_t stop = Cycles::rdtsc() + duration;
+void fixedWork(uint64_t duration, uint64_t creationTime, uint64_t arrayIndex) {
+    uint64_t startTime = Cycles::rdtsc();
+    uint64_t stop = startTime + duration;
     while (Cycles::rdtsc() < stop);
-    uint64_t latency = Cycles::rdtsc() - creationTime;
-    latencies[arrayIndex++] = latency;
+    uint64_t endTime = Cycles::rdtsc();
+    uint64_t latency = endTime - creationTime;
+
+    creationTimes[arrayIndex] = creationTime;
+    startTimes[arrayIndex] = startTime;
+    endTimes[arrayIndex] = endTime;
+    latencies[arrayIndex] = latency;
+    coreIds[arrayIndex] = Arachne::coreArbiter.getCoreId();
 }
 
-void postProcessResults(const char* benchmarkFile) {
+void postProcessResults(const char* benchmarkFile, uint64_t arrayIndex) {
     // Output TimeTrace for human reading
     size_t index = rindex(benchmarkFile, static_cast<int>('.')) - benchmarkFile;
     char outTraceFileName[1024];
@@ -82,9 +100,39 @@ void postProcessResults(const char* benchmarkFile) {
         abort();
     }
 
-    // Convert latencies to ns
-    for (size_t i = 0; i < arrayIndex; i++)
-        latencies[i] = Cycles::toNanoseconds(latencies[i]);
+//    fprintf(stderr, "Before writing latencies\n");
+    // Convert latencies to ns, and also record original values.
+    FILE* Output = fopen("/tmp/Latency.data", "w");
+    fwrite(latencies, sizeof(uint64_t), arrayIndex, Output);
+    fclose(Output);
+
+//    fprintf(stderr, "Outputed Latency array\n");
+
+    Output = fopen("/tmp/CreationTime.data", "w");
+    fwrite(creationTimes, sizeof(uint64_t), arrayIndex, Output);
+    fclose(Output);
+
+//    fprintf(stderr, "Outputed creation array\n");
+
+    Output = fopen("/tmp/StartTime.data", "w");
+    fwrite(startTimes, sizeof(uint64_t), arrayIndex, Output);
+    fclose(Output);
+
+//    fprintf(stderr, "Outputed start array\n");
+
+    Output = fopen("/tmp/EndTime.data", "w");
+    fwrite(endTimes, sizeof(uint64_t), arrayIndex, Output);
+    fclose(Output);
+//    fprintf(stderr, "Outputed end array\n");
+
+    Output = fopen("/tmp/CoreId.data", "w");
+    fwrite(coreIds, sizeof(int), arrayIndex, Output);
+    fclose(Output);
+
+//    fprintf(stderr, "Outputed CoreId array\n");
+//    for (size_t i = 0; i < arrayIndex; i++) {
+//        latencies[i] = Cycles::toNanoseconds(latencies[i]);
+//    }
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
     puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
@@ -123,24 +171,53 @@ void postProcessResults(const char* benchmarkFile) {
         // Median and 99% Latency
         // Note that this computation will modify data
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
+
+        // Convert statistics output to nanoseconds
+//        mathStats.median  =       Cycles::toNanoseconds(mathStats.median);
+//        mathStats.P90     =       Cycles::toNanoseconds(mathStats.P90);
+//        mathStats.P99     =       Cycles::toNanoseconds(mathStats.P99);
+//        mathStats.max     =       Cycles::toNanoseconds(mathStats.max);
+
         printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lf,%lf\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization, coresUsed,
                 mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
                 throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
                 utilization * loadFactor, (1-totalIdleCores)*loadFactor);
     }
-    delete[] latencies;
-
 }
 void dispatch(const char* benchmarkFile) {
     // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
 	Arachne::makeExclusiveOnCore();
+    uint64_t arrayIndex = 0;
 
     // Page in our data store
     MAX_ENTRIES = 1L << ARRAY_EXP;
     latencies = new uint64_t[MAX_ENTRIES];
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
+
+//    fprintf(stderr, "Initialized latencies array\n");
+
+    creationTimes = new uint64_t[MAX_ENTRIES];
+    memset(creationTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+
+//    fprintf(stderr, "Initialized creations array\n");
+
+    startTimes = new uint64_t[MAX_ENTRIES];
+    memset(startTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+
+//    fprintf(stderr, "Initialized startTime array\n");
+
+    endTimes = new uint64_t[MAX_ENTRIES];
+    memset(endTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+
+//    fprintf(stderr, "Initialized endTime array\n");
+
+    coreIds = new int[MAX_ENTRIES];
+    memset(coreIds, 0, MAX_ENTRIES*sizeof(int));
+
+//    fprintf(stderr, "Initialized CoreIds\n");
+    PerfUtils::Util::serialize();
 
     // Initialize interval
     size_t currentInterval = 0;
@@ -184,8 +261,13 @@ void dispatch(const char* benchmarkFile) {
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
+            uint64_t targetIndex = arrayIndex++;
+            if (targetIndex > MAX_ENTRIES) {
+                fprintf(stderr, "Death by out of bounds\n");
+                exit(0);
+            }
             // Keep trying to create this thread until we succeed.
-            while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime) == Arachne::NullThread);
+            while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime, targetIndex) == Arachne::NullThread);
 
             switch(distType) {
                 case POISSON:
@@ -248,9 +330,32 @@ void dispatch(const char* benchmarkFile) {
 
         }
     }
+    fprintf(stderr, "Finished producing dispatches %lu\n", Cycles::rdtsc());
+    // Wait for completions so the checksum will be useful. Exactly two threads
+    // should exist when this loop exits. One is the core scaling thread and
+    // one is this thread.
+    while (true) {
+        uint64_t sum = 0;
+        for (size_t i = 0; i < Arachne::occupiedAndCount.size(); i++)
+            sum += __builtin_popcountl(Arachne::occupiedAndCount[i]->load().occupied);
+        if (sum == 2) break;
+    }
+
     // We can compute statistics and then shut down since we already stored the
     // last index of the last interval.
-    postProcessResults(benchmarkFile);
+    postProcessResults(benchmarkFile, arrayIndex);
+
+//    // Verify checksum after Stats
+//    newCheckSum = 0;
+//    for (size_t i = 0; i < arrayIndex; i++)
+//        newCheckSum += latencies[i];
+//    if (newCheckSum != beforeStatsChecksum) {
+//        fprintf(stderr, "Checksum failed!Previous = %lu, After Stats = %lu\n", beforeStatsChecksum, newCheckSum);
+//        fflush(stderr);
+//        exit(0);
+//    }
+    delete[] latencies;
+
     Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
@@ -259,6 +364,11 @@ void dispatch(const char* benchmarkFile) {
   * This method attempts to attach gdb to the currently running process.
   */
 void invokeGDB(int signum) {
+    // Ensure only one invocation of gdb tries to attach to this process
+    static std::atomic<int> invokedGdb(0);
+    if (invokedGdb) return;
+    invokedGdb = 1;
+
     char buf[256];
     snprintf(buf, sizeof(buf), "/usr/bin/gdb -p %d",  getpid());
     int ret = system(buf);
@@ -395,7 +505,7 @@ parseOptions(int* argcp, const char** argv) {
  */
 
 int main(int argc, const char** argv) {
-    CoreArbiter::Logger::setLogLevel(CoreArbiter::WARNING);
+    CoreArbiter::Logger::setLogLevel(CoreArbiter::NOTICE);
     Arachne::Logger::setLogLevel(Arachne::DEBUG);
 
 	Arachne::minNumCores = 2;
