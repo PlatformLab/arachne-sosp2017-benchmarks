@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "Arachne.h"
+#include "ThreadActivityTracker.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
@@ -29,9 +30,9 @@ using PerfUtils::TimeTrace;
 int ARRAY_EXP = 26;
 size_t MAX_ENTRIES;
 
-uint64_t *creationTimes;
-uint64_t *startTimes;
-uint64_t *endTimes;
+//uint64_t *creationTimes;
+//uint64_t *startTimes;
+//uint64_t *endTimes;
 uint64_t *latencies;
 
 // Fast reconstruction of data
@@ -69,18 +70,22 @@ std::vector<PerfStats> perfStats;
 /**
   * Spin for duration cycles, and then compute latency from creation time.
   */
-void fixedWork(uint64_t duration, uint64_t creationTime, uint64_t arrayIndex) {
+void fixedWork(uint64_t duration, uint64_t creationTime, uint32_t arrayIndex) {
     uint64_t startTime = Cycles::rdtsc();
     uint64_t stop = startTime + duration;
     while (Cycles::rdtsc() < stop);
     uint64_t endTime = Cycles::rdtsc();
     uint64_t latency = endTime - creationTime;
 
-    creationTimes[arrayIndex] = creationTime;
-    startTimes[arrayIndex] = startTime;
-    endTimes[arrayIndex] = endTime;
+//    creationTimes[arrayIndex] = creationTime;
+//    startTimes[arrayIndex] = startTime;
+//    endTimes[arrayIndex] = endTime;
     latencies[arrayIndex] = latency;
-    coreIds[arrayIndex] = Arachne::coreArbiter.getCoreId();
+//    coreIds[arrayIndex] = Arachne::coreArbiter.getCoreId();
+    uint32_t coreId = Arachne::coreArbiter.getCoreId();
+    Arachne::logEvent(creationTime, arrayIndex, coreId, Arachne::CREATION);
+    Arachne::logEvent(startTime, arrayIndex, coreId, Arachne::START);
+    Arachne::logEvent(endTime, arrayIndex, coreId, Arachne::END);
 }
 
 void postProcessResults(const char* benchmarkFile, uint64_t arrayIndex) {
@@ -108,31 +113,36 @@ void postProcessResults(const char* benchmarkFile, uint64_t arrayIndex) {
 
 //    fprintf(stderr, "Outputed Latency array\n");
 
-    Output = fopen("/tmp/CreationTime.data", "w");
-    fwrite(creationTimes, sizeof(uint64_t), arrayIndex, Output);
-    fclose(Output);
-
-//    fprintf(stderr, "Outputed creation array\n");
-
-    Output = fopen("/tmp/StartTime.data", "w");
-    fwrite(startTimes, sizeof(uint64_t), arrayIndex, Output);
-    fclose(Output);
-
-//    fprintf(stderr, "Outputed start array\n");
-
-    Output = fopen("/tmp/EndTime.data", "w");
-    fwrite(endTimes, sizeof(uint64_t), arrayIndex, Output);
-    fclose(Output);
-//    fprintf(stderr, "Outputed end array\n");
-
-    Output = fopen("/tmp/CoreId.data", "w");
-    fwrite(coreIds, sizeof(int), arrayIndex, Output);
-    fclose(Output);
+//    Output = fopen("/tmp/CreationTime.data", "w");
+//    fwrite(creationTimes, sizeof(uint64_t), arrayIndex, Output);
+//    fclose(Output);
+//
+////    fprintf(stderr, "Outputed creation array\n");
+//
+//    Output = fopen("/tmp/StartTime.data", "w");
+//    fwrite(startTimes, sizeof(uint64_t), arrayIndex, Output);
+//    fclose(Output);
+//
+////    fprintf(stderr, "Outputed start array\n");
+//
+//    Output = fopen("/tmp/EndTime.data", "w");
+//    fwrite(endTimes, sizeof(uint64_t), arrayIndex, Output);
+//    fclose(Output);
+////    fprintf(stderr, "Outputed end array\n");
+//
+//    Output = fopen("/tmp/CoreId.data", "w");
+//    fwrite(coreIds, sizeof(int), arrayIndex, Output);
+//    fclose(Output);
+//
 
 //    fprintf(stderr, "Outputed CoreId array\n");
 //    for (size_t i = 0; i < arrayIndex; i++) {
 //        latencies[i] = Cycles::toNanoseconds(latencies[i]);
 //    }
+
+    FILE* events = fopen("/tmp/Events.data", "w");
+    Arachne::dumpEvents(events);
+    fclose(events);
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
     puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
@@ -189,32 +199,32 @@ void dispatch(const char* benchmarkFile) {
     // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
 	Arachne::makeExclusiveOnCore();
-    uint64_t arrayIndex = 0;
+    uint32_t arrayIndex = 0;
 
     // Page in our data store
     MAX_ENTRIES = 1L << ARRAY_EXP;
     latencies = new uint64_t[MAX_ENTRIES];
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
-//    fprintf(stderr, "Initialized latencies array\n");
-
-    creationTimes = new uint64_t[MAX_ENTRIES];
-    memset(creationTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
-
-//    fprintf(stderr, "Initialized creations array\n");
-
-    startTimes = new uint64_t[MAX_ENTRIES];
-    memset(startTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
-
-//    fprintf(stderr, "Initialized startTime array\n");
-
-    endTimes = new uint64_t[MAX_ENTRIES];
-    memset(endTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
-
-//    fprintf(stderr, "Initialized endTime array\n");
-
-    coreIds = new int[MAX_ENTRIES];
-    memset(coreIds, 0, MAX_ENTRIES*sizeof(int));
+////    fprintf(stderr, "Initialized latencies array\n");
+//
+//    creationTimes = new uint64_t[MAX_ENTRIES];
+//    memset(creationTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+//
+////    fprintf(stderr, "Initialized creations array\n");
+//
+//    startTimes = new uint64_t[MAX_ENTRIES];
+//    memset(startTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+//
+////    fprintf(stderr, "Initialized startTime array\n");
+//
+//    endTimes = new uint64_t[MAX_ENTRIES];
+//    memset(endTimes, 0, MAX_ENTRIES*sizeof(uint64_t));
+//
+////    fprintf(stderr, "Initialized endTime array\n");
+//
+//    coreIds = new int[MAX_ENTRIES];
+//    memset(coreIds, 0, MAX_ENTRIES*sizeof(int));
 
 //    fprintf(stderr, "Initialized CoreIds\n");
     PerfUtils::Util::serialize();
