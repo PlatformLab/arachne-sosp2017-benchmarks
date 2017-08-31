@@ -6,7 +6,6 @@
 #include "Arachne.h"
 #include "ThreadActivityTracker.h"
 #include "PerfUtils/Cycles.h"
-#include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
 #include "CoreArbiter/Logger.h"
@@ -25,7 +24,6 @@ extern std::vector<std::atomic<MaskAndCount> * > occupiedAndCount;
 extern CoreArbiterClient& coreArbiter;
 }
 
-using PerfUtils::TimeTrace;
 
 int ARRAY_EXP = 26;
 size_t MAX_ENTRIES;
@@ -77,36 +75,16 @@ void fixedWork(uint64_t duration, uint64_t creationTime, uint32_t arrayIndex) {
     uint64_t endTime = Cycles::rdtsc();
     uint64_t latency = endTime - creationTime;
 
-//    creationTimes[arrayIndex] = creationTime;
-//    startTimes[arrayIndex] = startTime;
-//    endTimes[arrayIndex] = endTime;
     latencies[arrayIndex] = latency;
-//    coreIds[arrayIndex] = Arachne::coreArbiter.getCoreId();
-    uint32_t coreId = Arachne::coreArbiter.getCoreId();
-    Arachne::logEvent(creationTime, arrayIndex, coreId, Arachne::CREATION);
-    Arachne::logEvent(startTime, arrayIndex, coreId, Arachne::START);
-    Arachne::logEvent(endTime, arrayIndex, coreId, Arachne::END);
 }
 
 void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) {
-    // Output TimeTrace for human reading
-    size_t index = rindex(benchmarkFile, static_cast<int>('.')) - benchmarkFile;
-    char outTraceFileName[1024];
-    strncpy(outTraceFileName, benchmarkFile, index);
-    outTraceFileName[index] = '\0';
-    strncat(outTraceFileName, ".log", 4);
-    TimeTrace::setOutputFileName(outTraceFileName);
-    TimeTrace::keepOldEvents = true;
-    TimeTrace::print();
-
     // Sanity check
     if (totalCreationCount >= MAX_ENTRIES) {
         fprintf(stderr, "Benchmark wrote past the end of latency array. Assuming memory corruption. Final index written = %lu, MAX_ENTRIES = %lu\n", totalCreationCount, MAX_ENTRIES);
         abort();
     }
 
-//    fprintf(stderr, "Before writing latencies\n");
-    // Convert latencies to ns, and also record original values.
     FILE* Output = fopen("/tmp/Latency.data", "w");
     fwrite(latencies, sizeof(uint64_t), totalCreationCount, Output);
     fclose(Output);
@@ -118,7 +96,7 @@ void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) 
 
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,U x LF,(1-idle) x LF");
+    puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,SI,EI");
     for (size_t i = 1; i < indices.size(); i++) {
         double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
             perfStats[i-1].collectionTime);
@@ -139,11 +117,6 @@ void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) 
         uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
         double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
 
-        // Subtract the exclusive dispatch core.
-        uint64_t numSharedCores = perfStats[i].numCoreIncrements - perfStats[i].numCoreDecrements - 1;
-        double idleCoreFraction = static_cast<double>(idleCycles) / static_cast<double>(totalCycles);
-        double totalIdleCores = idleCoreFraction * static_cast<double>(numSharedCores);
-
         // Compute core count changes
         uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
         uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
@@ -156,16 +129,16 @@ void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) 
         Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
 
         // Convert statistics output to nanoseconds
-//        mathStats.median  =       Cycles::toNanoseconds(mathStats.median);
-//        mathStats.P90     =       Cycles::toNanoseconds(mathStats.P90);
-//        mathStats.P99     =       Cycles::toNanoseconds(mathStats.P99);
-//        mathStats.max     =       Cycles::toNanoseconds(mathStats.max);
+        mathStats.median  =       Cycles::toNanoseconds(mathStats.median);
+        mathStats.P90     =       Cycles::toNanoseconds(mathStats.P90);
+        mathStats.P99     =       Cycles::toNanoseconds(mathStats.P99);
+        mathStats.max     =       Cycles::toNanoseconds(mathStats.max);
 
-        printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lf,%lf\n", durationOfInterval,
+        printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lu,%lu\n", durationOfInterval,
                 intervals[i-1].creationsPerSecond, utilization, coresUsed,
                 mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
                 throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
-                utilization * loadFactor, (1-totalIdleCores)*loadFactor);
+                indices[i-1], indices[i]);
     }
 }
 void dispatch(const char* benchmarkFile) {
@@ -218,7 +191,6 @@ void dispatch(const char* benchmarkFile) {
     uint64_t nextIntervalTime = currentTime +
         Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
 
-    TimeTrace::record("Beginning of benchmark");
 
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
@@ -262,9 +234,6 @@ void dispatch(const char* benchmarkFile) {
             // Advance the interval
             currentInterval++;
             if (currentInterval == numIntervals) break;
-            TimeTrace::record("Load Change START %u --> %u Creations Per Second.",
-                    static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
-                    static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
 
             nextIntervalTime = currentTime +
                 Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
@@ -286,13 +255,8 @@ void dispatch(const char* benchmarkFile) {
                 nextCycleTime = Cycles::rdtsc() +
                     Cycles::fromSeconds(uniformIG(gen));
             }
-            TimeTrace::record("Load Change END %u --> %u Creations Per Second.",
-                    static_cast<uint32_t>(intervals[currentInterval - 1].creationsPerSecond),
-                    static_cast<uint32_t>(intervals[currentInterval].creationsPerSecond));
-
         }
     }
-    fprintf(stderr, "Finished producing dispatches %lu\n", Cycles::rdtsc());
     // Wait for completions so the checksum will be useful. Exactly two threads
     // should exist when this loop exits. One is the core scaling thread and
     // one is this thread.
@@ -307,17 +271,7 @@ void dispatch(const char* benchmarkFile) {
     // last index of the last interval.
     postProcessResults(benchmarkFile, arrayIndex);
 
-//    // Verify checksum after Stats
-//    newCheckSum = 0;
-//    for (size_t i = 0; i < arrayIndex; i++)
-//        newCheckSum += latencies[i];
-//    if (newCheckSum != beforeStatsChecksum) {
-//        fprintf(stderr, "Checksum failed!Previous = %lu, After Stats = %lu\n", beforeStatsChecksum, newCheckSum);
-//        fflush(stderr);
-//        exit(0);
-//    }
     delete[] latencies;
-
     Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
@@ -467,7 +421,7 @@ parseOptions(int* argcp, const char** argv) {
  */
 
 int main(int argc, const char** argv) {
-    CoreArbiter::Logger::setLogLevel(CoreArbiter::NOTICE);
+    CoreArbiter::Logger::setLogLevel(CoreArbiter::ERROR);
     Arachne::Logger::setLogLevel(Arachne::DEBUG);
 
 	Arachne::minNumCores = 2;
