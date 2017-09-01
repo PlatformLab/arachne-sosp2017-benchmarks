@@ -28,14 +28,7 @@ extern CoreArbiterClient& coreArbiter;
 int ARRAY_EXP = 26;
 size_t MAX_ENTRIES;
 
-//uint64_t *creationTimes;
-//uint64_t *startTimes;
-//uint64_t *endTimes;
 uint64_t *latencies;
-
-// Fast reconstruction of data
-// ThreadID is implied by array index.
-int *coreIds;
 
 enum DistributionType {
     POISSON,
@@ -84,15 +77,6 @@ void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) 
         fprintf(stderr, "Benchmark wrote past the end of latency array. Assuming memory corruption. Final index written = %lu, MAX_ENTRIES = %lu\n", totalCreationCount, MAX_ENTRIES);
         abort();
     }
-
-    FILE* Output = fopen("/tmp/Latency.data", "w");
-    fwrite(latencies, sizeof(uint64_t), totalCreationCount, Output);
-    fclose(Output);
-
-    // TODO: Remove events for the distribution analysis.
-    FILE* events = fopen("/tmp/Events.data", "w");
-    Arachne::dumpEvents(events);
-    fclose(events);
 
     // Output core utilization, median & 99% latency, and throughput for each interval in a
     // plottable format.
