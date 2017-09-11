@@ -406,7 +406,7 @@ parseOptions(int* argcp, const char** argv) {
 
 int main(int argc, const char** argv) {
     CoreArbiter::Logger::setLogLevel(CoreArbiter::ERROR);
-    Arachne::Logger::setLogLevel(Arachne::DEBUG);
+    Arachne::Logger::setLogLevel(Arachne::ERROR);
 
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
