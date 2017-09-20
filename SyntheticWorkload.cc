@@ -2,9 +2,10 @@
 #include <thread>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include "Arachne.h"
-#include "ThreadActivityTracker.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
@@ -125,6 +126,18 @@ void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) 
                 indices[i-1], indices[i]);
     }
 }
+
+void printTime() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    unsigned long long millisecondsSinceEpoch =
+        (unsigned long long)(tv.tv_sec) * 1000 +
+        (unsigned long long)(tv.tv_usec) / 1000;
+
+    fprintf(stderr, "Start Time Of Experiment = %llu\n",
+            millisecondsSinceEpoch);
+}
+
 void dispatch(const char* benchmarkFile) {
     // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
@@ -175,7 +188,8 @@ void dispatch(const char* benchmarkFile) {
     uint64_t nextIntervalTime = currentTime +
         Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
 
-
+    // TODO: Output the real time with us granularity.
+    printTime();
     // DCFT loop
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
