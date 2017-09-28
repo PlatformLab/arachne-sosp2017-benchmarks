@@ -18,43 +18,43 @@ using namespace CoreArbiter;
   * This thread will get unblocked when a core is allocated, and will block
   * itself again when the number of cores is decreased.
   */
-void coreExec(CoreArbiterClient& client) {
+void coreExec(CoreArbiterClient* client) {
     for (int i = 0; i < NUM_TRIALS; i++) {
         TimeTrace::record("Core thread about to block");
-        client.blockUntilCoreAvailable();
+        client->blockUntilCoreAvailable();
         TimeTrace::record("Core thread returned from block");
-        while (!client.mustReleaseCore());
+        while (!client->mustReleaseCore());
         TimeTrace::record("Core informed that it should block");
     }
 }
 
-void coreRequest(CoreArbiterClient& client) {
+void coreRequest(CoreArbiterClient* client) {
     std::vector<uint32_t> oneCoreRequest = {1,0,0,0,0,0,0,0};
 
-    client.setRequestedCores(oneCoreRequest);
-    client.blockUntilCoreAvailable();
+    client->setRequestedCores(oneCoreRequest);
+    client->blockUntilCoreAvailable();
 
     std::vector<uint32_t> twoCoresRequest = {2,0,0,0,0,0,0,0};
     for (int i = 0; i < NUM_TRIALS; i++) {
         // When the number of blocked threads becomes nonzero, we request a core.
-        while (client.getNumBlockedThreads() == 0);
+        while (client->getNumBlockedThreads() == 0);
         TimeTrace::record("Detected thread block");
-        client.setRequestedCores(twoCoresRequest);
+        client->setRequestedCores(twoCoresRequest);
         TimeTrace::record("Requested a core");
         // When the number of blocked threads becomes zero, we release a core.
-        while (client.getNumBlockedThreads() == 1);
+        while (client->getNumBlockedThreads() == 1);
         TimeTrace::record("Detected thread wakeup");
-        client.setRequestedCores(oneCoreRequest);
+        client->setRequestedCores(oneCoreRequest);
         TimeTrace::record("Released a core");
     }
 }
 
 int main(){
     Logger::setLogLevel(ERROR);
-    CoreArbiterClient& client =
+    CoreArbiterClient* client =
         CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
     std::thread requestThread(coreRequest, std::ref(client));
-    while (client.getNumOwnedCores() == 0);
+    while (client->getNumOwnedCores() == 0);
 
     std::thread coreThread(coreExec, std::ref(client));
 

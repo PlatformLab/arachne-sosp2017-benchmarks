@@ -15,54 +15,54 @@ using namespace CoreArbiter;
 
 #define NUM_TRIALS 1000
 
-void highPriorityRequest(CoreArbiterClient& client) {
-    client.blockUntilCoreAvailable();
+void highPriorityRequest(CoreArbiterClient* client) {
+    client->blockUntilCoreAvailable();
 
     // Wait until the other high priority thread is running
-    while (client.getNumOwnedCores() < 2);
+    while (client->getNumOwnedCores() < 2);
 
     for (int i = 0; i < NUM_TRIALS; i++) {
         // printf("*** %d ***\n", i);
         TimeTrace::record("About to request fewer cores");
-        client.setRequestedCores({1,0,0,0,0,0,0,0});
+        client->setRequestedCores({1,0,0,0,0,0,0,0});
         TimeTrace::record("Requested fewer cores");
-        while (client.getNumBlockedThreadsFromServer() == 0);
+        while (client->getNumBlockedThreadsFromServer() == 0);
         TimeTrace::record("High priority thread blocked.");
-        while(client.getNumUnoccupiedCores() > 0);
+        while(client->getNumUnoccupiedCores() > 0);
         TimeTrace::record("About to request more cores");
-        client.setRequestedCores({2,0,0,0,0,0,0,0});
+        client->setRequestedCores({2,0,0,0,0,0,0,0});
         TimeTrace::record("Requested more cores");
-        while(client.getNumBlockedThreads() == 1);
+        while(client->getNumBlockedThreads() == 1);
     }
 
-    client.unregisterThread();
+    client->unregisterThread();
 }
 
-void highPriorityBlock(CoreArbiterClient& client) {
-    client.blockUntilCoreAvailable();
+void highPriorityBlock(CoreArbiterClient* client) {
+    client->blockUntilCoreAvailable();
 
     // Wait until the other high priority thread is running
-    while (client.getNumOwnedCores() < 2);
+    while (client->getNumOwnedCores() < 2);
 
     for (int i = 0; i < NUM_TRIALS; i++) {
-        while (!client.mustReleaseCore());
+        while (!client->mustReleaseCore());
         TimeTrace::record("High priority core release requested.");
-        client.blockUntilCoreAvailable();
+        client->blockUntilCoreAvailable();
         TimeTrace::record("High priority core acquired.");
     }
 
-    client.unregisterThread();
+    client->unregisterThread();
 }
 
-void lowPriorityExec(CoreArbiterClient& client) {
+void lowPriorityExec(CoreArbiterClient* client) {
     std::vector<uint32_t> lowPriorityRequest = {0,0,0,0,0,0,0,1};
-    client.setRequestedCores(lowPriorityRequest);
-    client.blockUntilCoreAvailable();
+    client->setRequestedCores(lowPriorityRequest);
+    client->blockUntilCoreAvailable();
 
-    while (client.getNumProcessesOnServer() == 1);
-    while (client.getNumProcessesOnServer() == 2);
+    while (client->getNumProcessesOnServer() == 1);
+    while (client->getNumProcessesOnServer() == 2);
 
-    client.unregisterThread();
+    client->unregisterThread();
 }
 
 int main(){
@@ -70,12 +70,12 @@ int main(){
 
     pid_t pid = fork();
     if (pid == 0) {
-        CoreArbiterClient& client =
+        CoreArbiterClient* client =
             CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
 
         // Wait for the low priority thread to be put on a core
-        while (client.getNumUnoccupiedCores() == 2);
-        client.setRequestedCores({2,0,0,0,0,0,0,0});
+        while (client->getNumUnoccupiedCores() == 2);
+        client->setRequestedCores({2,0,0,0,0,0,0,0});
 
         std::thread highPriorityThread1(highPriorityBlock, std::ref(client));
         std::thread highPriorityThread2(highPriorityRequest, std::ref(client));
@@ -85,7 +85,7 @@ int main(){
         TimeTrace::setOutputFileName("CoreRequest_Contended_Timeout.log");
         TimeTrace::print();
     } else  {
-        CoreArbiterClient& client =
+        CoreArbiterClient* client =
             CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
         lowPriorityExec(client);
 
