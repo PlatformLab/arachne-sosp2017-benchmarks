@@ -7,7 +7,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "Arachne.h"
+#include "Arachne/Arachne.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"

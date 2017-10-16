@@ -2,7 +2,7 @@
 #include <atomic>
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
-#include "Arachne.h"
+#include "Arachne/Arachne.h"
 
 #define CORE_OCCUPANCY 3
 

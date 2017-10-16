@@ -3,7 +3,7 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
-#include "Arachne.h"
+#include "Arachne/Arachne.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
