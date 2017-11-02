@@ -5,7 +5,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include "Arachne.h"
+#include "Arachne/Arachne.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
