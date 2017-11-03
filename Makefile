@@ -1,3 +1,5 @@
+CXX ?= g++
+
 PERFUTILS=../PerfUtils
 ARACHNE=../Arachne
 COREARBITER=../CoreArbiter
@@ -16,10 +18,10 @@ all: $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS)
 ExtractStats:
 
 $(ARBITER_BENCHMARK_BINS) : % : %.cc $(COREARBITER)/lib/libCoreArbiter.a
-	g++  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
+	$(CXX)  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
 
 $(UNIFIED_BENCHMARK_BINS): % : %.cc $(ARACHNE)/lib/libArachne.a $(COREARBITER)/lib/libCoreArbiter.a
-	g++  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
+	$(CXX)  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
 
 clean:
 	rm -f $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS) *.log
