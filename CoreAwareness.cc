@@ -182,7 +182,7 @@ void setupCpusets(const char* dispatchCore, const char* applicationCores,
 void dispatch() {
     // Move threads to appropriate cpusets
     for (unsigned int i = 1; i < Arachne::numActiveCores; i++) {
-        Arachne::join(Arachne::createThreadOnCore(i, findMyTid));
+        Arachne::join(Arachne::createThreadOnCore(0, i, findMyTid));
     }
     moveThreadsToCpuset({gettid()}, dispatchCpusetPath);
     moveThreadsToCpuset(tids, applicationCpusetPath);
@@ -238,7 +238,7 @@ void dispatch() {
     for (;; currentTime = Cycles::rdtsc()) {
         if (nextCycleTime < currentTime) {
             // Keep trying to create this thread until we succeed.
-            while (Arachne::createThread(fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread);
+            while (Arachne::createThread(0, fixedWork, cyclesPerThread, currentTime) == Arachne::NullThread);
 
             // Compute the next cycle time only after we win successfully
             nextCycleTime = currentTime +
@@ -341,7 +341,7 @@ int main(int argc, const char** argv) {
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
-    Arachne::init(&argc, argv);
+    Arachne::init(new CorePolicy(), &argc, argv);
 
     if (argc < 5) {
         printf("Not enough arguments\n");
@@ -372,7 +372,7 @@ int main(int argc, const char** argv) {
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThreadOnCore(0, dispatch);
+    Arachne::createThreadOnCore(0, 0, dispatch);
     Arachne::waitForTermination();
 
     // Output TimeTrace for human reading
