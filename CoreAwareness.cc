@@ -358,11 +358,17 @@ int main(int argc, const char** argv) {
         exit(1);
     }
     char buffer[1024];
-    fgets(buffer, 1024, specFile);
+    if (fgets(buffer, 1024, specFile) == NULL) {
+        printf("Error reading configuration file: %s\n", strerror(errno));
+        exit(1);
+    }
     sscanf(buffer, "%zu", &numIntervals);
     intervals = new Interval[numIntervals];
     for (size_t i = 0; i < numIntervals; i++) {
-        fgets(buffer, 1024, specFile);
+        if (fgets(buffer, 1024, specFile) == NULL) {
+            printf("Error reading configuration file: %s\n", strerror(errno));
+            exit(1);
+        }
         sscanf(buffer, "%lu %lf %lu",
                 &intervals[i].timeToRun,
                 &intervals[i].creationsPerSecond,
