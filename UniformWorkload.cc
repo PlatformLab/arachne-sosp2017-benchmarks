@@ -14,6 +14,8 @@ using Arachne::PerfStats;
 
 namespace Arachne{
 extern bool disableLoadEstimation;
+extern double maxIdleCoreFraction;
+extern double loadFactorThreshold;
 }
 
 using PerfUtils::TimeTrace;
@@ -63,7 +65,7 @@ void fixedWork(int threadId, uint64_t duration, uint64_t creationTime) {
 
     // Create a child thread. May have to retry because thread creation during
     // scale-down can cause a failure.
-    while (Arachne::createThread(0, fixedWork, threadId, duration, stop) == Arachne::NullThread);
+    while (Arachne::createThread(fixedWork, threadId, duration, stop) == Arachne::NullThread);
 
     // Compute latency
     uint64_t latency = Cycles::rdtsc() - creationTime;
@@ -99,7 +101,7 @@ void dispatch() {
     curNumThreads = numCoresOfLoad;
     for (int i = 0; i < numCoresOfLoad; i++) {
         TimeTrace::record("Creating thread with Id = %d\n", i);
-        Arachne::createThread(0, fixedWork, i, cyclesPerThread, Cycles::rdtsc());
+        Arachne::createThread(fixedWork, i, cyclesPerThread, Cycles::rdtsc());
     }
 
     // DCFT loop
@@ -133,7 +135,7 @@ void dispatch() {
                 curNumThreads = numCoresOfLoad;
                 for (int i = 0; i < numCoresOfLoad - formerCores; i++) {
                     TimeTrace::record("Creating thread with Id = %d\n", i + formerCores);
-                    Arachne::createThread(0, fixedWork, i + formerCores,
+                    Arachne::createThread(fixedWork, i + formerCores,
                             cyclesPerThread, currentTime);
                 }
             }
@@ -213,7 +215,7 @@ int main(int argc, const char** argv) {
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
-    Arachne::init(new CorePolicy(), &argc, argv);
+    Arachne::init(&argc, argv);
 
     // First argument specifies a configuration file with the following format
     // <count_of_rows>
@@ -242,10 +244,14 @@ int main(int argc, const char** argv) {
     }
     fclose(specFile);
 
+    if (argc > 2) {
+        Arachne::maxIdleCoreFraction = atof(argv[2]);
+        Arachne::loadFactorThreshold =  atof(argv[2]);
+    }
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThread(0, dispatch);
+    Arachne::createThread(dispatch);
     Arachne::waitForTermination();
 
     // Output TimeTrace for human reading

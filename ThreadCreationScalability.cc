@@ -25,7 +25,7 @@ void creator(int id, uint64_t counter) {
     // TimeTrace::record("Starting creator: %d on %d", id, Arachne::kernelThreadId);
     if (Cycles::rdtsc() < stopTime) {
         // TimeTrace::record("Before createThread: %d on %d", id, Arachne::kernelThreadId);
-        if (Arachne::createThread(0, creator, id, counter + 1) == Arachne::NullThread) {
+        if (Arachne::createThread(creator, id, counter + 1) == Arachne::NullThread) {
             abort();
         }
         // TimeTrace::record("After createThread success: %d on %d", id, Arachne::kernelThreadId);
@@ -40,7 +40,7 @@ void timeKeeper(int numCores, int seconds) {
     uint64_t durationInCycles = Cycles::fromSeconds(seconds);
     stopTime = Cycles::rdtsc() + durationInCycles;
     for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
-        Arachne::createThread(0, creator, i, 1);
+        Arachne::createThread(creator, i, 1);
     // Wait for all threads to finish, using a semaphor
     for (int i = 0; i < numCores * CORE_OCCUPANCY; i++)
         done.wait();
@@ -72,9 +72,9 @@ int main(int argc, const char** argv) {
     // Initialize the library
     Arachne::minNumCores = numCores;
     Arachne::maxNumCores = numCores;
-    Arachne::init(new CorePolicy(), &argc, argv);
+    Arachne::init(&argc, argv);
 
-    Arachne::createThread(0, timeKeeper, numCores, numSeconds);
+    Arachne::createThread(timeKeeper, numCores, numSeconds);
     Arachne::waitForTermination();
     // printf("%d,%d,%lu\n", numSeconds, numCores, static_cast<uint64_t>(
     //             static_cast<double>(globalCount.load()) / duration));

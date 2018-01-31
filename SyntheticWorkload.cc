@@ -6,7 +6,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include "Arachne/Arachne.h"
-#include "Arachne/CorePolicy.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
@@ -200,7 +199,7 @@ void dispatch(const char* benchmarkFile) {
                 exit(0);
             }
             // Keep trying to create this thread until we succeed.
-            while (Arachne::createThread(0, fixedWork, cyclesPerThread, nextCycleTime, targetIndex) == Arachne::NullThread);
+            while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime, targetIndex) == Arachne::NullThread);
 
             switch(distType) {
                 case POISSON:
@@ -336,6 +335,7 @@ parseOptions(int* argcp, const char** argv) {
     } optionSpecifiers[] = {
         {"arraySize", 'a', true},
         {"distribution", 'd', true},
+        {"scalingThreshold", 's', true}
     };
     const int UNRECOGNIZED = ~0;
 
@@ -389,6 +389,11 @@ parseOptions(int* argcp, const char** argv) {
                     abort();
                 }
                 break;
+            case 's':
+                Arachne::maxIdleCoreFraction = atof(optionArgument);
+                Arachne::loadFactorThreshold =  atof(optionArgument);
+                Arachne::maxUtilization = atof(optionArgument);
+                break;
             case UNRECOGNIZED:
                 fprintf(stderr, "Unrecognized option %s given.", optionName);
                 abort();
@@ -420,7 +425,7 @@ int main(int argc, const char** argv) {
 	Arachne::minNumCores = 2;
 	Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
-    Arachne::init(new CorePolicy(), &argc, argv);
+    Arachne::init(&argc, argv);
 
     // Parse options such as the size of array in powers of 2, and what kind of
     // distribution to use, and the value of the threshold parameter to pass to
@@ -468,6 +473,6 @@ int main(int argc, const char** argv) {
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThread(0, dispatch, argv[1]);
+    Arachne::createThread(dispatch, argv[1]);
     Arachne::waitForTermination();
 }
