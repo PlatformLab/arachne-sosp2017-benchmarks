@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "Arachne/Arachne.h"
+#include "Arachne/DefaultCoreManager.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
@@ -11,13 +12,6 @@
 
 using PerfUtils::Cycles;
 using Arachne::PerfStats;
-
-namespace Arachne{
-extern bool disableLoadEstimation;
-extern double maxIdleCoreFraction;
-extern double loadFactorThreshold;
-}
-
 using PerfUtils::TimeTrace;
 
 // Support a maximum of 100 million entries.
@@ -62,10 +56,6 @@ void fixedWork(uint64_t duration, uint64_t creationTime) {
 void dispatch() {
     // Page in our data store
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
-
-    // Prevent scheduling onto this core, since threads scheduled to this core
-    // will never get a chance to run.
-	Arachne::makeExclusiveOnCore();
 
     // Initialize interval
     size_t currentInterval = 0;
@@ -132,8 +122,7 @@ void dispatch() {
 
         }
     }
-    // Shutdown immediately to avoid overcounting.
-    Arachne::makeSharedOnCore();
+    // Shutdown immediately to avoid overcounting completions.
     Arachne::shutDown();
 }
 
@@ -233,8 +222,11 @@ int main(int argc, const char** argv) {
         // overly sensitive increase in core count will be rapidly countered by
         // a corresponding decrease.
         // TODO: Discuss with John the policy issues.
-        Arachne::loadFactorThreshold = threshold;
-        Arachne::createThread(dispatch);
+        reinterpret_cast<Arachne::DefaultCoreManager*>(
+                Arachne::getCoreManagerForTest())
+            ->getEstimator()
+            ->setLoadFactorThreshold(threshold);
+        Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch);
         Arachne::waitForTermination();
 
         // Sanity check

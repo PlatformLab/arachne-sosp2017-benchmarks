@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include "Arachne/Arachne.h"
+#include "Arachne/DefaultCoreManager.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
@@ -141,7 +142,6 @@ void printTime() {
 void dispatch(const char* benchmarkFile) {
     // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
-	Arachne::makeExclusiveOnCore();
     uint32_t arrayIndex = 0;
 
     // Page in our data store
@@ -270,7 +270,6 @@ void dispatch(const char* benchmarkFile) {
     postProcessResults(benchmarkFile, arrayIndex);
 
     delete[] latencies;
-    Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
 
@@ -335,7 +334,8 @@ parseOptions(int* argcp, const char** argv) {
     } optionSpecifiers[] = {
         {"arraySize", 'a', true},
         {"distribution", 'd', true},
-        {"scalingThreshold", 's', true}
+        {"utilizationThreshold", 'u', true},
+        {"loadFactorThreshold", 'f', true}
     };
     const int UNRECOGNIZED = ~0;
 
@@ -389,10 +389,11 @@ parseOptions(int* argcp, const char** argv) {
                     abort();
                 }
                 break;
-            case 's':
-                Arachne::maxIdleCoreFraction = atof(optionArgument);
-                Arachne::loadFactorThreshold =  atof(optionArgument);
-                Arachne::maxUtilization = atof(optionArgument);
+            case 'u':
+                reinterpret_cast<Arachne::DefaultCoreManager*>(Arachne::getCoreManagerForTest())->getEstimator()->setMaxUtilization(atof(optionArgument));
+                break;
+            case 'f':
+                reinterpret_cast<Arachne::DefaultCoreManager*>(Arachne::getCoreManagerForTest())->getEstimator()->setLoadFactorThreshold(atof(optionArgument));
                 break;
             case UNRECOGNIZED:
                 fprintf(stderr, "Unrecognized option %s given.", optionName);
@@ -473,6 +474,6 @@ int main(int argc, const char** argv) {
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThread(dispatch, argv[1]);
+    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch, argv[1]);
     Arachne::waitForTermination();
 }
