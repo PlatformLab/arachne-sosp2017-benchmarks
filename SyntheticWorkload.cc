@@ -1,41 +1,37 @@
-#include <random>
-#include <thread>
 #include <signal.h>
 #include <string.h>
-#include <time.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
+#include <random>
+#include <thread>
 #include "Arachne/Arachne.h"
 #include "Arachne/DefaultCoreManager.h"
+#include "CoreArbiter/CoreArbiterClient.h"
+#include "CoreArbiter/Logger.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/Stats.h"
 #include "PerfUtils/Util.h"
-#include "CoreArbiter/Logger.h"
-#include "CoreArbiter/CoreArbiterClient.h"
 
-using PerfUtils::Cycles;
 using Arachne::PerfStats;
 using CoreArbiter::CoreArbiterClient;
+using PerfUtils::Cycles;
 
-namespace Arachne{
+namespace Arachne {
 extern bool disableLoadEstimation;
 extern double maxIdleCoreFraction;
 extern double loadFactorThreshold;
 extern double maxUtilization;
-extern std::vector<std::atomic<MaskAndCount> * > occupiedAndCount;
+extern std::vector<std::atomic<MaskAndCount>*> occupiedAndCount;
 extern CoreArbiterClient& coreArbiter;
-}
-
+}  // namespace Arachne
 
 int ARRAY_EXP = 26;
 size_t MAX_ENTRIES;
 
-uint64_t *latencies;
+uint64_t* latencies;
 
-enum DistributionType {
-    POISSON,
-    UNIFORM
-} distType = POISSON;
+enum DistributionType { POISSON, UNIFORM } distType = POISSON;
 
 struct Interval {
     uint64_t timeToRun;
@@ -45,7 +41,7 @@ struct Interval {
     // are not meaningful.
     uint64_t durationPerThread;
     double creationsPerSecond;
-} *intervals;
+} * intervals;
 
 size_t numIntervals;
 
@@ -61,74 +57,95 @@ std::vector<uint64_t> numTimesLoadClipped;
 std::vector<PerfStats> perfStats;
 
 /**
-  * Spin for duration cycles, and then compute latency from creation time.
-  */
-void fixedWork(uint64_t duration, uint64_t creationTime, uint32_t arrayIndex) {
+ * Spin for duration cycles, and then compute latency from creation time.
+ */
+void
+fixedWork(uint64_t duration, uint64_t creationTime, uint32_t arrayIndex) {
     uint64_t startTime = Cycles::rdtsc();
     uint64_t stop = startTime + duration;
-    while (Cycles::rdtsc() < stop);
+    while (Cycles::rdtsc() < stop)
+        ;
     uint64_t endTime = Cycles::rdtsc();
     uint64_t latency = endTime - creationTime;
 
     latencies[arrayIndex] = latency;
 }
 
-void postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) {
+void
+postProcessResults(const char* benchmarkFile, uint64_t totalCreationCount) {
     // Sanity check
     if (totalCreationCount >= MAX_ENTRIES) {
-        fprintf(stderr, "Benchmark wrote past the end of latency array. Assuming memory corruption. Final index written = %lu, MAX_ENTRIES = %lu\n", totalCreationCount, MAX_ENTRIES);
+        fprintf(stderr,
+                "Benchmark wrote past the end of latency array. Assuming "
+                "memory corruption. Final index written = %lu, MAX_ENTRIES = "
+                "%lu\n",
+                totalCreationCount, MAX_ENTRIES);
         abort();
     }
 
-    // Output core utilization, median & 99% latency, and throughput for each interval in a
-    // plottable format.
-    puts("Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load Clips,SI,EI");
+    // Output core utilization, median & 99% latency, and throughput for each
+    // interval in a plottable format.
+    puts(
+        "Duration,Offered Load,Core Utilization,Absolute Cores Used,50\% "
+        "Latency,90\%,99\%,Max,Throughput,Load Factor,Core++,Core--,Load "
+        "Clips,SI,EI");
     for (size_t i = 1; i < indices.size(); i++) {
-        double durationOfInterval = Cycles::toSeconds(perfStats[i].collectionTime -
-            perfStats[i-1].collectionTime);
-        uint64_t idleCycles = perfStats[i].idleCycles - perfStats[i-1].idleCycles;
-        uint64_t totalCycles = perfStats[i].totalCycles - perfStats[i-1].totalCycles;
+        double durationOfInterval = Cycles::toSeconds(
+            perfStats[i].collectionTime - perfStats[i - 1].collectionTime);
+        uint64_t idleCycles =
+            perfStats[i].idleCycles - perfStats[i - 1].idleCycles;
+        uint64_t totalCycles =
+            perfStats[i].totalCycles - perfStats[i - 1].totalCycles;
         double utilization = static_cast<double>(totalCycles - idleCycles) /
-            static_cast<double>(totalCycles);
+                             static_cast<double>(totalCycles);
         double coresUsed = static_cast<double>(totalCycles - idleCycles) /
-            static_cast<double>(perfStats[i].collectionTime -
-                    perfStats[i-1].collectionTime);
+                           static_cast<double>(perfStats[i].collectionTime -
+                                               perfStats[i - 1].collectionTime);
 
-
-        // Note that this is completed tasks per second, where each task is currently 2 us
+        // Note that this is completed tasks per second, where each task is
+        // currently 2 us
         uint64_t throughput = static_cast<uint64_t>(
-                static_cast<double>(indices[i] - indices[i-1]) / durationOfInterval);
+            static_cast<double>(indices[i] - indices[i - 1]) /
+            durationOfInterval);
 
         // Compute load factor.
-        uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles - perfStats[i-1].weightedLoadedCycles;
-        double loadFactor = static_cast<double>(weightedLoadedCycles) / static_cast<double>(totalCycles);
+        uint64_t weightedLoadedCycles = perfStats[i].weightedLoadedCycles -
+                                        perfStats[i - 1].weightedLoadedCycles;
+        double loadFactor = static_cast<double>(weightedLoadedCycles) /
+                            static_cast<double>(totalCycles);
 
         // Compute core count changes
-        uint64_t numIncrements = perfStats[i].numCoreIncrements - perfStats[i-1].numCoreIncrements;
-        uint64_t numDecrements = perfStats[i].numCoreDecrements - perfStats[i-1].numCoreDecrements;
+        uint64_t numIncrements =
+            perfStats[i].numCoreIncrements - perfStats[i - 1].numCoreIncrements;
+        uint64_t numDecrements =
+            perfStats[i].numCoreDecrements - perfStats[i - 1].numCoreDecrements;
 
         // Compute clipping.
-        uint64_t loadClipCount = numTimesLoadClipped[i] - numTimesLoadClipped[i-1];
+        uint64_t loadClipCount =
+            numTimesLoadClipped[i] - numTimesLoadClipped[i - 1];
 
         // Median and 99% Latency
         // Note that this computation will modify data
-        Statistics mathStats = computeStatistics(latencies + indices[i-1], indices[i] - indices[i-1]);
+        Statistics mathStats = computeStatistics(latencies + indices[i - 1],
+                                                 indices[i] - indices[i - 1]);
 
         // Convert statistics output to nanoseconds
-        mathStats.median  =       Cycles::toNanoseconds(mathStats.median);
-        mathStats.P90     =       Cycles::toNanoseconds(mathStats.P90);
-        mathStats.P99     =       Cycles::toNanoseconds(mathStats.P99);
-        mathStats.max     =       Cycles::toNanoseconds(mathStats.max);
+        mathStats.median = Cycles::toNanoseconds(mathStats.median);
+        mathStats.P90 = Cycles::toNanoseconds(mathStats.P90);
+        mathStats.P99 = Cycles::toNanoseconds(mathStats.P99);
+        mathStats.max = Cycles::toNanoseconds(mathStats.max);
 
-        printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lu,%lu\n", durationOfInterval,
-                intervals[i-1].creationsPerSecond, utilization, coresUsed,
-                mathStats.median, mathStats.P90, mathStats.P99, mathStats.max,
-                throughput, loadFactor, numIncrements, numDecrements, loadClipCount,
-                indices[i-1], indices[i]);
+        printf("%lf,%lf,%lf,%lf,%lu,%lu,%lu,%lu,%lu,%lf,%lu,%lu,%lu,%lu,%lu\n",
+               durationOfInterval, intervals[i - 1].creationsPerSecond,
+               utilization, coresUsed, mathStats.median, mathStats.P90,
+               mathStats.P99, mathStats.max, throughput, loadFactor,
+               numIncrements, numDecrements, loadClipCount, indices[i - 1],
+               indices[i]);
     }
 }
 
-void printTime() {
+void
+printTime() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     unsigned long long millisecondsSinceEpoch =
@@ -139,7 +156,8 @@ void printTime() {
             millisecondsSinceEpoch);
 }
 
-void dispatch(const char* benchmarkFile) {
+void
+dispatch(const char* benchmarkFile) {
     // Prevent scheduling onto this core, since threads scheduled to this core
     // will never get a chance to run.
     uint32_t arrayIndex = 0;
@@ -147,34 +165,37 @@ void dispatch(const char* benchmarkFile) {
     // Page in our data store
     MAX_ENTRIES = 1L << ARRAY_EXP;
     latencies = new uint64_t[MAX_ENTRIES];
-    memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
+    memset(latencies, 0, MAX_ENTRIES * sizeof(uint64_t));
 
     PerfUtils::Util::serialize();
 
     // Initialize interval
     size_t currentInterval = 0;
 
-    // Start with a DCFT-style implementation based on shared-memory for communication
-    // If that becomes too expensive, then switch to a separate thread for commands.
-    uint64_t cyclesPerThread = Cycles::fromNanoseconds(intervals[currentInterval].durationPerThread);
+    // Start with a DCFT-style implementation based on shared-memory for
+    // communication If that becomes too expensive, then switch to a separate
+    // thread for commands.
+    uint64_t cyclesPerThread =
+        Cycles::fromNanoseconds(intervals[currentInterval].durationPerThread);
 
-	std::random_device rd;
-	std::mt19937 gen(rd());
+    std::random_device rd;
+    std::mt19937 gen(rd());
 
-    std::exponential_distribution<double> intervalGenerator(intervals[currentInterval].creationsPerSecond);
-    std::uniform_real_distribution<> uniformIG(0, 2.0 / intervals[currentInterval].creationsPerSecond);
+    std::exponential_distribution<double> intervalGenerator(
+        intervals[currentInterval].creationsPerSecond);
+    std::uniform_real_distribution<> uniformIG(
+        0, 2.0 / intervals[currentInterval].creationsPerSecond);
 
     uint64_t nextCycleTime;
     switch (distType) {
         case POISSON:
-            nextCycleTime = Cycles::rdtsc() +
-                Cycles::fromSeconds(intervalGenerator(gen));
+            nextCycleTime =
+                Cycles::rdtsc() + Cycles::fromSeconds(intervalGenerator(gen));
             break;
         case UNIFORM:
-            nextCycleTime = Cycles::rdtsc() +
-                Cycles::fromSeconds(uniformIG(gen));
+            nextCycleTime =
+                Cycles::rdtsc() + Cycles::fromSeconds(uniformIG(gen));
     }
-
 
     PerfStats stats;
     PerfStats::collectStats(&stats);
@@ -185,7 +206,8 @@ void dispatch(const char* benchmarkFile) {
     perfStats.push_back(stats);
 
     uint64_t currentTime = Cycles::rdtsc();
-    uint64_t nextIntervalTime = currentTime +
+    uint64_t nextIntervalTime =
+        currentTime +
         Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
 
     // TODO: Output the real time with us granularity.
@@ -199,17 +221,19 @@ void dispatch(const char* benchmarkFile) {
                 exit(0);
             }
             // Keep trying to create this thread until we succeed.
-            while (Arachne::createThread(fixedWork, cyclesPerThread, nextCycleTime, targetIndex) == Arachne::NullThread);
+            while (Arachne::createThread(fixedWork, cyclesPerThread,
+                                         nextCycleTime,
+                                         targetIndex) == Arachne::NullThread)
+                ;
 
-            switch(distType) {
+            switch (distType) {
                 case POISSON:
                     nextCycleTime = nextCycleTime +
-                        Cycles::fromSeconds(intervalGenerator(gen));
+                                    Cycles::fromSeconds(intervalGenerator(gen));
                     break;
-               case UNIFORM:
-                    nextCycleTime = nextCycleTime +
-                        Cycles::fromSeconds(uniformIG(gen));
-
+                case UNIFORM:
+                    nextCycleTime =
+                        nextCycleTime + Cycles::fromSeconds(uniformIG(gen));
             }
             // Clip the nextCycle time to the current time if we're about to go
             // into instability. This way, we do not keep falling further and
@@ -223,7 +247,8 @@ void dispatch(const char* benchmarkFile) {
         }
 
         if (nextIntervalTime < currentTime) {
-            // Collect latency, throughput, and core utilization information from the past interval
+            // Collect latency, throughput, and core utilization information
+            // from the past interval
             PerfStats::collectStats(&stats);
             indices.push_back(arrayIndex);
             numTimesLoadClipped.push_back(loadClipCount);
@@ -231,27 +256,30 @@ void dispatch(const char* benchmarkFile) {
 
             // Advance the interval
             currentInterval++;
-            if (currentInterval == numIntervals) break;
+            if (currentInterval == numIntervals)
+                break;
 
-            nextIntervalTime = currentTime +
+            nextIntervalTime =
+                currentTime +
                 Cycles::fromNanoseconds(intervals[currentInterval].timeToRun);
-            cyclesPerThread =
-                Cycles::fromNanoseconds(
-                        intervals[currentInterval].durationPerThread);
-            switch(distType) {
-              case POISSON:
-                intervalGenerator.param(
+            cyclesPerThread = Cycles::fromNanoseconds(
+                intervals[currentInterval].durationPerThread);
+            switch (distType) {
+                case POISSON:
+                    intervalGenerator.param(
                         std::exponential_distribution<double>::param_type(
                             intervals[currentInterval].creationsPerSecond));
-                nextCycleTime = Cycles::rdtsc() +
-                    Cycles::fromSeconds(intervalGenerator(gen));
-                break;
-              case UNIFORM:
-                uniformIG.param(
+                    nextCycleTime = Cycles::rdtsc() +
+                                    Cycles::fromSeconds(intervalGenerator(gen));
+                    break;
+                case UNIFORM:
+                    uniformIG.param(
                         std::uniform_real_distribution<double>::param_type(
-                            0, 2.0 / intervals[currentInterval].creationsPerSecond));
-                nextCycleTime = Cycles::rdtsc() +
-                    Cycles::fromSeconds(uniformIG(gen));
+                            0,
+                            2.0 /
+                                intervals[currentInterval].creationsPerSecond));
+                    nextCycleTime =
+                        Cycles::rdtsc() + Cycles::fromSeconds(uniformIG(gen));
             }
         }
     }
@@ -261,8 +289,10 @@ void dispatch(const char* benchmarkFile) {
     while (true) {
         uint64_t sum = 0;
         for (size_t i = 0; i < Arachne::occupiedAndCount.size(); i++)
-            sum += __builtin_popcountl(Arachne::occupiedAndCount[i]->load().occupied);
-        if (sum == 2) break;
+            sum += __builtin_popcountl(
+                Arachne::occupiedAndCount[i]->load().occupied);
+        if (sum == 2)
+            break;
     }
 
     // We can compute statistics and then shut down since we already stored the
@@ -274,16 +304,18 @@ void dispatch(const char* benchmarkFile) {
 }
 
 /**
-  * This method attempts to attach gdb to the currently running process.
-  */
-void invokeGDB(int signum) {
+ * This method attempts to attach gdb to the currently running process.
+ */
+void
+invokeGDB(int signum) {
     // Ensure only one invocation of gdb tries to attach to this process
     static std::atomic<int> invokedGdb(0);
-    if (invokedGdb) return;
+    if (invokedGdb)
+        return;
     invokedGdb = 1;
 
     char buf[256];
-    snprintf(buf, sizeof(buf), "/usr/bin/gdb -p %d",  getpid());
+    snprintf(buf, sizeof(buf), "/usr/bin/gdb -p %d", getpid());
     int ret = system(buf);
 
     if (ret == -1) {
@@ -316,11 +348,12 @@ installSignalHandler() {
 }
 
 /**
-  * This function currently supports only long options.
-  */
+ * This function currently supports only long options.
+ */
 void
 parseOptions(int* argcp, const char** argv) {
-    if (argcp == NULL) return;
+    if (argcp == NULL)
+        return;
 
     int argc = *argcp;
 
@@ -331,12 +364,10 @@ parseOptions(int* argcp, const char** argv) {
         int id;
         // Does the option take an argument?
         bool takesArgument;
-    } optionSpecifiers[] = {
-        {"arraySize", 'a', true},
-        {"distribution", 'd', true},
-        {"utilizationThreshold", 'u', true},
-        {"loadFactorThreshold", 'f', true}
-    };
+    } optionSpecifiers[] = {{"arraySize", 'a', true},
+                            {"distribution", 'd', true},
+                            {"utilizationThreshold", 'u', true},
+                            {"loadFactorThreshold", 'f', true}};
     const int UNRECOGNIZED = ~0;
 
     int i = 1;
@@ -350,19 +381,18 @@ parseOptions(int* argcp, const char** argv) {
         const char* optionArgument = NULL;
 
         for (size_t k = 0;
-                k < sizeof(optionSpecifiers) / sizeof(OptionSpecifier); k++) {
+             k < sizeof(optionSpecifiers) / sizeof(OptionSpecifier); k++) {
             const char* candidateName = optionSpecifiers[k].optionName;
             bool needsArg = optionSpecifiers[k].takesArgument;
-            if (strncmp(candidateName,
-                        optionName, strlen(candidateName)) == 0) {
+            if (strncmp(candidateName, optionName, strlen(candidateName)) ==
+                0) {
                 if (needsArg) {
                     if (i + 1 >= argc) {
-                        fprintf(stderr,
-                                "Missing argument to option %s!\n",
+                        fprintf(stderr, "Missing argument to option %s!\n",
                                 candidateName);
                         break;
                     }
-                    optionArgument = argv[i+1];
+                    optionArgument = argv[i + 1];
                     optionId = optionSpecifiers[k].id;
                     argc -= 2;
                     memmove(argv + i, argv + i + 2, (argc - i) * sizeof(char*));
@@ -390,10 +420,16 @@ parseOptions(int* argcp, const char** argv) {
                 }
                 break;
             case 'u':
-                reinterpret_cast<Arachne::DefaultCoreManager*>(Arachne::getCoreManagerForTest())->getEstimator()->setMaxUtilization(atof(optionArgument));
+                reinterpret_cast<Arachne::DefaultCoreManager*>(
+                    Arachne::getCoreManagerForTest())
+                    ->getEstimator()
+                    ->setMaxUtilization(atof(optionArgument));
                 break;
             case 'f':
-                reinterpret_cast<Arachne::DefaultCoreManager*>(Arachne::getCoreManagerForTest())->getEstimator()->setLoadFactorThreshold(atof(optionArgument));
+                reinterpret_cast<Arachne::DefaultCoreManager*>(
+                    Arachne::getCoreManagerForTest())
+                    ->getEstimator()
+                    ->setLoadFactorThreshold(atof(optionArgument));
                 break;
             case UNRECOGNIZED:
                 fprintf(stderr, "Unrecognized option %s given.", optionName);
@@ -402,7 +438,6 @@ parseOptions(int* argcp, const char** argv) {
     }
     *argcp = argc;
 }
-
 
 /**
  * This synthetic benchmarking tool allows us to create threads at a Poisson
@@ -419,12 +454,13 @@ parseOptions(int* argcp, const char** argv) {
  * well, but we haven't yet done that.
  */
 
-int main(int argc, const char** argv) {
+int
+main(int argc, const char** argv) {
     CoreArbiter::Logger::setLogLevel(CoreArbiter::ERROR);
     Arachne::Logger::setLogLevel(Arachne::ERROR);
 
-	Arachne::minNumCores = 2;
-	Arachne::maxNumCores = 5;
+    Arachne::minNumCores = 2;
+    Arachne::maxNumCores = 5;
     Arachne::setErrorStream(stderr);
     Arachne::init(&argc, argv);
 
@@ -440,8 +476,9 @@ int main(int argc, const char** argv) {
 
     // First argument specifies a configuration file with the following format
     // <count_of_rows>
-    // <time_to_run_in_ns> <attempted_creations_per_second> <thread_duration_in_ns>
-    FILE *specFile = fopen(argv[1], "r");
+    // <time_to_run_in_ns> <attempted_creations_per_second>
+    // <thread_duration_in_ns>
+    FILE* specFile = fopen(argv[1], "r");
     if (!specFile) {
         printf("Configuration file '%s' non existent!\n", argv[1]);
         exit(1);
@@ -458,22 +495,23 @@ int main(int argc, const char** argv) {
             printf("Error reading configuration file: %s\n", strerror(errno));
             exit(1);
         }
-        sscanf(buffer, "%lu %lf %lu",
-                &intervals[i].timeToRun,
-                &intervals[i].creationsPerSecond,
-                &intervals[i].durationPerThread);
-//        // Adjust the offered load down to match the maximum Poisson load achieved.
-//        if (distType == UNIFORM)
-//            // For 70% utilization threshold and load factor 225
-//            // intervals[i].creationsPerSecond *= 0.87;
-//            // For 85% utilization threshold, the maximum throughput ratio for
-//            // poisson is this much.
-//            intervals[i].creationsPerSecond *= 0.9327956;
+        sscanf(buffer, "%lu %lf %lu", &intervals[i].timeToRun,
+               &intervals[i].creationsPerSecond,
+               &intervals[i].durationPerThread);
+        //        // Adjust the offered load down to match the maximum Poisson
+        //        load achieved. if (distType == UNIFORM)
+        //            // For 70% utilization threshold and load factor 225
+        //            // intervals[i].creationsPerSecond *= 0.87;
+        //            // For 85% utilization threshold, the maximum throughput
+        //            ratio for
+        //            // poisson is this much.
+        //            intervals[i].creationsPerSecond *= 0.9327956;
     }
     fclose(specFile);
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch, argv[1]);
+    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE,
+                                   dispatch, argv[1]);
     Arachne::waitForTermination();
 }
