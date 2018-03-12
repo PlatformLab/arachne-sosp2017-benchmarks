@@ -8,6 +8,7 @@
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
 #include "CoreArbiter/Logger.h"
+#include "Arachne/DefaultCoreManager.h"
 
 using PerfUtils::Cycles;
 using Arachne::PerfStats;
@@ -76,10 +77,6 @@ void dispatch() {
     // Page in our data store
     memset(latencies, 0, MAX_ENTRIES*sizeof(uint64_t));
 
-    // Prevent scheduling onto this core, since threads scheduled to this core
-    // will never get a chance to run.
-	Arachne::makeExclusiveOnCore();
-
     // Initialize interval
     size_t currentInterval = 0;
 
@@ -146,8 +143,6 @@ void dispatch() {
 
         }
     }
-    // Shutdown immediately to avoid overcounting.
-    Arachne::makeSharedOnCore();
     Arachne::shutDown();
 }
 
@@ -245,13 +240,15 @@ int main(int argc, const char** argv) {
     fclose(specFile);
 
     if (argc > 2) {
-        Arachne::maxIdleCoreFraction = atof(argv[2]);
-        Arachne::loadFactorThreshold =  atof(argv[2]);
+        reinterpret_cast<Arachne::DefaultCoreManager*>(
+                Arachne::getCoreManagerForTest())
+            ->getEstimator()
+            ->setLoadFactorThreshold(atof(argv[2]));
     }
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThread(dispatch);
+    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch);
     Arachne::waitForTermination();
 
     // Output TimeTrace for human reading
