@@ -229,7 +229,7 @@ int main(int argc, const char** argv) {
         // a corresponding decrease.
         // TODO: Discuss with John the policy issues.
         reinterpret_cast<Arachne::DefaultCoreManager*>(
-                Arachne::getCoreManagerForTest())
+                Arachne::getCoreManager())
             ->getEstimator()
             ->setLoadFactorThreshold(threshold);
         Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch);

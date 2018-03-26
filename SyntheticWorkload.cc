@@ -421,13 +421,13 @@ parseOptions(int* argcp, const char** argv) {
                 break;
             case 'u':
                 reinterpret_cast<Arachne::DefaultCoreManager*>(
-                    Arachne::getCoreManagerForTest())
+                    Arachne::getCoreManager())
                     ->getEstimator()
                     ->setMaxUtilization(atof(optionArgument));
                 break;
             case 'f':
                 reinterpret_cast<Arachne::DefaultCoreManager*>(
-                    Arachne::getCoreManagerForTest())
+                    Arachne::getCoreManager())
                     ->getEstimator()
                     ->setLoadFactorThreshold(atof(optionArgument));
                 break;

@@ -241,7 +241,7 @@ int main(int argc, const char** argv) {
 
     if (argc > 2) {
         reinterpret_cast<Arachne::DefaultCoreManager*>(
-                Arachne::getCoreManagerForTest())
+                Arachne::getCoreManager())
             ->getEstimator()
             ->setLoadFactorThreshold(atof(argv[2]));
     }
