@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "Arachne/Arachne.h"
-#include "Arachne/DefaultCoreManager.h"
+#include "Arachne/DefaultCorePolicy.h"
 #include "PerfUtils/Cycles.h"
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
@@ -228,11 +228,11 @@ int main(int argc, const char** argv) {
         // overly sensitive increase in core count will be rapidly countered by
         // a corresponding decrease.
         // TODO: Discuss with John the policy issues.
-        reinterpret_cast<Arachne::DefaultCoreManager*>(
-                Arachne::getCoreManager())
+        reinterpret_cast<Arachne::DefaultCorePolicy*>(
+                Arachne::getCorePolicy())
             ->getEstimator()
             ->setLoadFactorThreshold(threshold);
-        Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch);
+        Arachne::createThreadWithClass(Arachne::DefaultCorePolicy::EXCLUSIVE, dispatch);
         Arachne::waitForTermination();
 
         // Sanity check

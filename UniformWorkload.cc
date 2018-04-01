@@ -8,7 +8,7 @@
 #include "PerfUtils/TimeTrace.h"
 #include "PerfUtils/Stats.h"
 #include "CoreArbiter/Logger.h"
-#include "Arachne/DefaultCoreManager.h"
+#include "Arachne/DefaultCorePolicy.h"
 
 using PerfUtils::Cycles;
 using Arachne::PerfStats;
@@ -240,15 +240,15 @@ int main(int argc, const char** argv) {
     fclose(specFile);
 
     if (argc > 2) {
-        reinterpret_cast<Arachne::DefaultCoreManager*>(
-                Arachne::getCoreManager())
+        reinterpret_cast<Arachne::DefaultCorePolicy*>(
+                Arachne::getCorePolicy())
             ->getEstimator()
             ->setLoadFactorThreshold(atof(argv[2]));
     }
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE, dispatch);
+    Arachne::createThreadWithClass(Arachne::DefaultCorePolicy::EXCLUSIVE, dispatch);
     Arachne::waitForTermination();
 
     // Output TimeTrace for human reading

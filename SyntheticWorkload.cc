@@ -6,7 +6,7 @@
 #include <random>
 #include <thread>
 #include "Arachne/Arachne.h"
-#include "Arachne/DefaultCoreManager.h"
+#include "Arachne/DefaultCorePolicy.h"
 #include "CoreArbiter/CoreArbiterClient.h"
 #include "CoreArbiter/Logger.h"
 #include "PerfUtils/Cycles.h"
@@ -420,14 +420,14 @@ parseOptions(int* argcp, const char** argv) {
                 }
                 break;
             case 'u':
-                reinterpret_cast<Arachne::DefaultCoreManager*>(
-                    Arachne::getCoreManager())
+                reinterpret_cast<Arachne::DefaultCorePolicy*>(
+                    Arachne::getCorePolicy())
                     ->getEstimator()
                     ->setMaxUtilization(atof(optionArgument));
                 break;
             case 'f':
-                reinterpret_cast<Arachne::DefaultCoreManager*>(
-                    Arachne::getCoreManager())
+                reinterpret_cast<Arachne::DefaultCorePolicy*>(
+                    Arachne::getCorePolicy())
                     ->getEstimator()
                     ->setLoadFactorThreshold(atof(optionArgument));
                 break;
@@ -511,7 +511,7 @@ main(int argc, const char** argv) {
 
     // Catch intermittent errors
     installSignalHandler();
-    Arachne::createThreadWithClass(Arachne::DefaultCoreManager::EXCLUSIVE,
+    Arachne::createThreadWithClass(Arachne::DefaultCorePolicy::EXCLUSIVE,
                                    dispatch, argv[1]);
     Arachne::waitForTermination();
 }
