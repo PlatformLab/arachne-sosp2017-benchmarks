@@ -10,6 +10,6 @@
 for i in $( seq 1.0 0.25 5.0 ); do
     p=$(printf %.0f $( echo "$i*100" | bc ));
     echo $p;
-    ./SyntheticWorkload --maxNumCores 15 --arraySize 33 --scalingThreshold $i --distribution poisson  LoadTracking_20K_Monster.bench \
+    ./SyntheticWorkload --maxNumCores 15 --arraySize 33 --loadFactorThreshold $i --distribution poisson  LoadTracking_20K_Monster.bench \
         2> rcmonster/Monster_Poisson_LoadFactor$p.log > rcmonster/Monster_Poisson_LoadFactor$p.csv ;
 done
