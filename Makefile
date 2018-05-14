@@ -4,6 +4,7 @@ PERFUTILS=../PerfUtils
 ARACHNE=../Arachne
 COREARBITER=../CoreArbiter
 
+BIN_DIR=bin
 
 LIBS=-I$(ARACHNE)/include -I$(COREARBITER)/include  -L$(ARACHNE)/lib -lArachne  -L$(COREARBITER)/lib \
 	-lCoreArbiter -I$(PERFUTILS)/include $(PERFUTILS)/lib/libPerfUtils.a -lpcrecpp -pthread
@@ -22,6 +23,10 @@ $(ARBITER_BENCHMARK_BINS) : % : %.cc $(COREARBITER)/lib/libCoreArbiter.a
 
 $(UNIFIED_BENCHMARK_BINS): % : %.cc $(ARACHNE)/lib/libArachne.a $(COREARBITER)/lib/libCoreArbiter.a
 	$(CXX)  $(DEBUG) $(CXXFLAGS)  $^ $(LIBS) -o $@
+
+install: $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS)
+	mkdir -p $(BIN_DIR)
+	cp -f $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS) $(BIN_DIR)
 
 clean:
 	rm -f $(ARBITER_BENCHMARK_BINS) $(UNIFIED_BENCHMARK_BINS) *.log
