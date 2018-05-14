@@ -1,3 +1,4 @@
+#include <sys/wait.h>
 #include <stdio.h>
 #include <thread>
 #include <atomic>
@@ -124,6 +125,6 @@ int main(){
             CoreArbiterClient::getInstance("/tmp/CoreArbiter/testsocket");
         lowPriorityExec(client, lowPriorityRunning);
 
-        wait();
+        wait(NULL);
     }
 }

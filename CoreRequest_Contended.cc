@@ -1,3 +1,4 @@
+#include <sys/wait.h>
 #include <stdio.h>
 #include <thread>
 #include <atomic>
@@ -125,6 +126,6 @@ int main(){
         TimeTrace::setOutputFileName("CoreRequest_Contended_LowPriority.log");
         TimeTrace::print();
 
-        wait();
+        wait(NULL);
     }
 }
