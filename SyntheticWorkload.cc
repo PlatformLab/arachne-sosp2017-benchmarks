@@ -16,6 +16,7 @@
 using Arachne::PerfStats;
 using CoreArbiter::CoreArbiterClient;
 using PerfUtils::Cycles;
+using Arachne::CorePolicy;
 
 namespace Arachne {
 extern bool disableLoadEstimation;
@@ -197,8 +198,14 @@ dispatch(const char* benchmarkFile) {
                 Cycles::rdtsc() + Cycles::fromSeconds(uniformIG(gen));
     }
 
+    int numTotalCores = static_cast<int>(std::thread::hardware_concurrency());
+    CorePolicy::CoreList allCores(numTotalCores);
+    for (int i = 0; i < numTotalCores; i++) {
+        allCores.add(i);
+    }
+
     PerfStats stats;
-    PerfStats::collectStats(&stats);
+    PerfStats::collectStats(&stats, allCores);
     uint64_t loadClipCount = 0;
 
     indices.push_back(arrayIndex);
@@ -249,7 +256,7 @@ dispatch(const char* benchmarkFile) {
         if (nextIntervalTime < currentTime) {
             // Collect latency, throughput, and core utilization information
             // from the past interval
-            PerfStats::collectStats(&stats);
+            PerfStats::collectStats(&stats, allCores);
             indices.push_back(arrayIndex);
             numTimesLoadClipped.push_back(loadClipCount);
             perfStats.push_back(stats);
@@ -288,9 +295,12 @@ dispatch(const char* benchmarkFile) {
     // one is this thread.
     while (true) {
         uint64_t sum = 0;
-        for (size_t i = 0; i < Arachne::occupiedAndCount.size(); i++)
-            sum += __builtin_popcountl(
-                Arachne::occupiedAndCount[i]->load().occupied);
+        for (size_t i = 0; i < Arachne::occupiedAndCount.size(); i++) {
+            if (Arachne::occupiedAndCount[i]) {
+                sum += __builtin_popcountl(
+                        Arachne::occupiedAndCount[i]->load().occupied);
+            }
+        }
         if (sum == 2)
             break;
     }
